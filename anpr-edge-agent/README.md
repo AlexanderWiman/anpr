@@ -1,75 +1,25 @@
 # ANPR Edge Agent
 
-> **Svenska — installation på anläggning:** [MANUAL_SV.md](MANUAL_SV.md)
+> **Personal på anläggning:** [MANUAL_SV.md](MANUAL_SV.md)
 
-Local service at the IP camera site: captures RTSP frames, reads license plates with YOLO+OCR, and POSTs events to the central backend.
+## Installation (3 steg)
 
-## Quick start
+1. **Ladda ner** projektet från GitHub (Code → Download ZIP) och packa upp
+2. **Dubbelklicka** på `Installer` (`Installer.command` på Mac, `Installer.cmd` på Windows)
+3. Fyll i **anläggning**, **kamera-IP** och **token** → klicka **Installera och starta**
 
-```bash
-./scripts/setup.sh
-cp sites/falun.env.example sites/falun.env   # edit RTSP URL
-# Edit .env.example values → merged on start (BACKEND_URL, ANPR_AGENT_TOKEN)
-./scripts/start.sh
-```
+Klart. Systemet startar själv vid omstart. Använd genvägen **ANPR** på skrivbordet för att öppna dashboarden.
 
-Open `http://127.0.0.1:8080` and click **Starta**.
+**Krav:** Python 3.11+ ([python.org](https://www.python.org/downloads/)), FFmpeg (`brew install ffmpeg` / `winget install Gyan.FFmpeg`)
 
-## Site profiles
+---
 
-Shared settings live in `.env.example`. Per-site values in `sites/<name>.env`:
+Local service at the IP camera site: RTSP capture, YOLO+OCR, events to central backend.
 
-```env
-SITE_ID=falun
-CAMERA_ID=entrance-1
-DIRECTION=entry
-CAMERA_RTSP_URL=rtsp://user:pass@192.168.1.100:554/stream1
-```
-
-On start, `choose-site` merges `.env.example` + selected profile → `.env`.
-
-**Windows:** double-click **Start ANPR** (see `scripts/install-worker-shortcut.ps1`).
-
-**Fixed site (no menu):** set `ANPR_SITE_PROFILE=falun` before start.
-
-## Windows service (production)
-
-```powershell
-.\scripts\setup.ps1
-.\scripts\install-windows-service.ps1
-.\scripts\install-worker-shortcut.ps1
-```
-
-## Linux systemd
+## För IT / utvecklare
 
 ```bash
-sudo ./scripts/install-systemd.sh
+./scripts/setup.sh && ./scripts/start.sh
 ```
 
-## Docker
-
-```bash
-cp .env.example .env
-cp sites/falun.env.example sites/falun.env
-docker compose up --build
-```
-
-## Booking hints
-
-When enabled (`BOOKING_HINTS_ENABLED=true`), the agent fetches today's expected plates from:
-
-`GET /api/anpr/sites/{siteId}/expected-plates`
-
-This helps disambiguate OCR errors (e.g. POE797 vs PUE797) without blocking drop-in vehicles.
-
-## Architecture
-
-```
-IP Camera (RTSP) → YOLO + OCR → dedup → POST /api/anpr/events → Railway backend
-```
-
-## Requirements
-
-- Python 3.11+
-- FFmpeg (RTSP via OpenCV)
-- Network to camera (LAN) and backend (HTTPS)
+See [deploy/README.md](deploy/README.md) for systemd / advanced installs.

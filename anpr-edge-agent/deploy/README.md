@@ -30,3 +30,15 @@ Workers choose site at start via `choose-site` (Windows: `start-anpr.cmd`, Linux
 ```bash
 sudo ./scripts/install-systemd.sh
 ```
+
+## macOS
+
+| File | Purpose |
+|------|---------|
+| `com.anpr.edge-agent.plist` | LaunchAgent template (user login) |
+
+```bash
+./scripts/install-mac.sh
+./scripts/install-mac-shortcut.sh   # desktop only
+./scripts/uninstall-mac.sh
+```
