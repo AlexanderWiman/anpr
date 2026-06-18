@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANPR — Registreringsskyltar</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --green: #3dd68c;
+      --red: #f56565;
+      --yellow: #ecc94b;
+      --accent: #667eea;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 600; }
+    header .meta { color: var(--muted); font-size: 0.875rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.ok { background: rgba(61,214,140,0.15); color: var(--green); }
+    .badge.warn { background: rgba(236,201,75,0.15); color: var(--yellow); }
+    .badge.err { background: rgba(245,101,101,0.15); color: var(--red); }
+    main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+
+    /* --- Worker control panel --- */
+    .control-panel {
+      background: linear-gradient(135deg, #1e2a3d 0%, #1a2332 100%);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+    .control-panel.stopped { border-color: var(--yellow); }
+    .control-panel.running { border-color: var(--green); }
+    .control-panel.error { border-color: var(--red); }
+    .control-status {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+    .control-hint {
+      color: var(--muted);
+      font-size: 1rem;
+      margin-bottom: 1.25rem;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .control-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-control {
+      border: none;
+      border-radius: 12px;
+      padding: 1rem 2.5rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 200px;
+      transition: transform 0.1s, opacity 0.15s;
+    }
+    .btn-control:active { transform: scale(0.97); }
+    .btn-control:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-start {
+      background: var(--green);
+      color: #0a1a12;
+    }
+    .btn-stop {
+      background: var(--red);
+      color: white;
+    }
+    .control-msg {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      min-height: 1.4em;
+    }
+    .control-msg.ok { color: var(--green); }
+    .control-msg.err { color: var(--red); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+    .card .label { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.25rem; }
+    .card .value { font-size: 1.5rem; font-weight: 700; }
+    .card .sub { color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem; }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    section h2 {
+      font-size: 0.95rem;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { padding: 0.65rem 1.25rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+    tr:last-child td { border-bottom: none; }
+    .plate { font-family: Consolas, monospace; font-weight: 700; letter-spacing: 0.08em; }
+    .empty { padding: 2rem; text-align: center; color: var(--muted); }
+    footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 1rem; }
+    button.small {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.4rem 0.9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .toolbar {
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .toolbar span { color: var(--muted); font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Registreringsskyltar</h1>
+      <div class="meta" id="site-info">—</div>
+    </div>
+    <div>
+      <span class="badge ok" id="header-badge">—</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="control-panel stopped" id="control-panel">
+      <div class="control-status" id="control-status">Laddar...</div>
+      <div class="control-hint" id="control-hint"></div>
+      <div class="control-buttons">
+        <button class="btn-control btn-start" id="btn-start" onclick="startAgent()">
+          ▶ Starta
+        </button>
+        <button class="btn-control btn-stop" id="btn-stop" onclick="stopAgent()" disabled>
+          ■ Stoppa
+        </button>
+      </div>
+      <div class="control-msg" id="control-msg"></div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">Kamera</div>
+        <div class="value" id="camera-status">—</div>
+        <div class="sub" id="camera-detail">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Backend</div>
+        <div class="value" id="backend-status">—</div>
+        <div class="sub" id="backend-detail">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Levererade</div>
+        <div class="value" id="delivered-count">0</div>
+        <div class="sub" id="failed-count">0 misslyckade</div>
+      </div>
+      <div class="card">
+        <div class="label">Senaste regnr</div>
+        <div class="value plate" id="last-plate">—</div>
+        <div class="sub" id="last-plate-time">—</div>
+      </div>
+    </div>
+
+    <section>
+      <h2>Senaste händelser</h2>
+      <div class="toolbar">
+        <span>Uppdateras automatiskt</span>
+        <button class="small" onclick="refresh()">Uppdatera</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Tid</th><th>Regnr</th><th>Säkerhet</th><th>Status</th></tr>
+        </thead>
+        <tbody id="events-body">
+          <tr><td colspan="4" class="empty">Inga händelser ännu</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="queue-section" style="display:none">
+      <h2>Väntande i kö</h2>
+      <table>
+        <thead>
+          <tr><th>Regnr</th><th>Försök</th><th>Nästa försök</th><th>Fel</th></tr>
+        </thead>
+        <tbody id="queue-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>ANPR Edge Agent · <span id="poll-info">localhost:8080</span></footer>
+
+  <script>
+    const agentLabels = {
+      stopped:  { text: 'Stoppad', hint: 'Tryck Starta för att börja läsa registreringsskyltar.', cls: 'stopped' },
+      running:  { text: 'Kör', hint: 'Systemet läser registreringsskyltar från kameran.', cls: 'running' },
+      starting: { text: 'Startar...', hint: 'Ansluter till kamera, vänta ett ögonblick.', cls: 'stopped' },
+      stopping: { text: 'Stoppar...', hint: 'Avslutar kameran.', cls: 'stopped' },
+      error:    { text: 'Fel', hint: 'Något gick fel. Prova Starta igen eller kontakta support.', cls: 'error' },
+    };
+
+    const eventLabels = {
+      delivered: { text: 'Levererad', cls: 'ok' },
+      queued:    { text: 'I kö', cls: 'warn' },
+      failed:    { text: 'Misslyckad', cls: 'err' },
+      detected:  { text: 'Detekterad', cls: 'warn' },
+    };
+
+    let busy = false;
+
+    function fmtTime(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('sv-SE');
+    }
+
+    function setMsg(text, ok) {
+      const el = document.getElementById('control-msg');
+      el.textContent = text || '';
+      el.className = 'control-msg' + (text ? (ok ? ' ok' : ' err') : '');
+    }
+
+    function updateControls(agent) {
+      const info = agentLabels[agent.state] || agentLabels.stopped;
+      const panel = document.getElementById('control-panel');
+      panel.className = 'control-panel ' + info.cls;
+
+      document.getElementById('control-status').textContent = info.text;
+      document.getElementById('control-hint').textContent = info.hint;
+
+      const btnStart = document.getElementById('btn-start');
+      const btnStop = document.getElementById('btn-stop');
+      btnStart.disabled = busy || !agent.canStart;
+      btnStop.disabled = busy || !agent.canStop;
+
+      const badge = document.getElementById('header-badge');
+      if (agent.state === 'running') {
+        badge.textContent = 'Aktiv';
+        badge.className = 'badge ok';
+      } else if (agent.state === 'error') {
+        badge.textContent = 'Fel';
+        badge.className = 'badge err';
+      } else {
+        badge.textContent = 'Stoppad';
+        badge.className = 'badge warn';
+      }
+    }
+
+    async function startAgent() {
+      if (busy) return;
+      busy = true;
+      setMsg('Startar...', true);
+      document.getElementById('btn-start').disabled = true;
+      try {
+        const res = await fetch('/api/agent/start', { method: 'POST' });
+        const data = await res.json();
+        setMsg(data.message || (res.ok ? 'Startad!' : 'Kunde inte starta'), res.ok);
+        if (!res.ok) setMsg(data.detail || data.message || 'Start misslyckades', false);
+      } catch (e) {
+        setMsg('Kunde inte nå agenten', false);
+      }
+      busy = false;
+      refresh();
+    }
+
+    async function stopAgent() {
+      if (busy) return;
+      busy = true;
+      setMsg('Stoppar...', true);
+      document.getElementById('btn-stop').disabled = true;
+      try {
+        const res = await fetch('/api/agent/stop', { method: 'POST' });
+        const data = await res.json();
+        setMsg(data.message || (res.ok ? 'Stoppad' : 'Kunde inte stoppa'), res.ok);
+        if (!res.ok) setMsg(data.detail || data.message || 'Stopp misslyckades', false);
+      } catch (e) {
+        setMsg('Kunde inte nå agenten', false);
+      }
+      busy = false;
+      refresh();
+    }
+
+    async function refresh() {
+      try {
+        const [status, events, queue] = await Promise.all([
+          fetch('/api/status').then(r => r.json()),
+          fetch('/api/events?limit=30').then(r => r.json()),
+          fetch('/api/queue').then(r => r.json()),
+        ]);
+
+        const hints = status.bookingHints;
+        const hintsText = hints?.enabled
+          ? ` · ${hints.plateCount} bokade idag`
+          : '';
+        document.getElementById('site-info').textContent =
+          `${status.site.siteId} · ${status.site.cameraId}${hintsText}`;
+
+        updateControls(status.agent);
+
+        if (status.anpr.ocrProcessing) {
+          document.getElementById('control-hint').textContent =
+            'Analyserar bild med OCR — vänta ett ögonblick...';
+        }
+
+        const running = status.agent.state === 'running';
+        const camOk = status.camera.status === 'connected';
+
+        document.getElementById('camera-status').textContent =
+          !running ? '—' : (camOk ? 'OK' : status.camera.status);
+        document.getElementById('camera-detail').textContent =
+          running ? `Senast ${fmtTime(status.camera.lastFrameAt)}` : 'Inte startad';
+
+        const beOk = status.backend.reachable;
+        document.getElementById('backend-status').textContent = beOk ? 'OK' : 'Nere';
+        document.getElementById('backend-status').style.color = beOk ? 'var(--green)' : 'var(--red)';
+        document.getElementById('backend-detail').textContent = status.backend.url;
+
+        document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;
+        document.getElementById('failed-count').textContent =
+          `${status.queue.deliveries_failed ?? 0} misslyckade`;
+
+        const last = status.lastDetection;
+        document.getElementById('last-plate').textContent = last?.plate ?? '—';
+        document.getElementById('last-plate-time').textContent = fmtTime(last?.seen_at);
+
+        const tbody = document.getElementById('events-body');
+        if (!events.events.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty">Inga händelser ännu</td></tr>';
+        } else {
+          tbody.innerHTML = events.events.map(e => {
+            const st = eventLabels[e.status] || { text: e.status, cls: 'warn' };
+            return `<tr>
+              <td>${fmtTime(e.capturedAt)}</td>
+              <td class="plate">${e.plate}</td>
+              <td>${(e.confidence * 100).toFixed(0)}%</td>
+              <td><span class="badge ${st.cls}">${st.text}</span></td>
+            </tr>`;
+          }).join('');
+        }
+
+        const qSection = document.getElementById('queue-section');
+        if (queue.size > 0) {
+          qSection.style.display = 'block';
+          document.getElementById('queue-body').innerHTML = queue.queue.map(q =>
+            `<tr>
+              <td class="plate">${q.plate}</td>
+              <td>${q.attempts}</td>
+              <td>${fmtTime(q.nextRetryAt)}</td>
+              <td style="color:var(--muted);font-size:0.8rem">${q.lastError || '—'}</td>
+            </tr>`
+          ).join('');
+        } else {
+          qSection.style.display = 'none';
+        }
+      } catch (err) {
+        document.getElementById('control-status').textContent = 'Ej ansluten';
+        document.getElementById('control-hint').textContent =
+          'Programmet körs inte. Dubbelklicka på "Start ANPR" på skrivbordet.';
+        document.getElementById('header-badge').textContent = 'Av';
+        document.getElementById('header-badge').className = 'badge err';
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = true;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

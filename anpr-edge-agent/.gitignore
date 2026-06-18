@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+sites/*.env
+!sites/*.env.example
+
+# Models (downloaded on setup)
+models/*.pt
+!models/.gitkeep
+
+# Media
+assets/*
+!assets/.gitkeep
+
+# Storage & logs (runtime)
+storage/frames/*
+storage/events/*
+!storage/frames/.gitkeep
+!storage/events/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

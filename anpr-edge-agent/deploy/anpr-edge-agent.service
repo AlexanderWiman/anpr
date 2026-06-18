@@ -1,0 +1,46 @@
+[Unit]
+Description=ANPR Edge Agent — local plate recognition and event delivery
+Documentation=https://github.com/example/anpr-edge-agent
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=anpr-agent
+Group=anpr-agent
+
+WorkingDirectory=/opt/anpr-edge-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/anpr-edge-agent
+EnvironmentFile=/etc/anpr-edge-agent/env
+
+ExecStart=/opt/anpr-edge-agent/.venv/bin/python -m src.main
+
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillMode=mixed
+
+# Writable paths (storage, logs, offline queue)
+ReadWritePaths=/var/lib/anpr-edge-agent
+
+# Basic hardening (compatible with OpenCV/FFmpeg RTSP)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+# Allow local network access to camera + backend
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=anpr-edge-agent
+
+[Install]
+WantedBy=multi-user.target

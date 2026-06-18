@@ -1,0 +1,14 @@
+services:
+  anpr-edge-agent:
+    build: .
+    container_name: anpr-edge-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HEALTH_PORT:-8080}:8080"
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    # Use host network if camera is on local LAN (uncomment if needed):
+    # network_mode: host

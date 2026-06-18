@@ -1,0 +1,2 @@
+# OCR for YOLO provider (fast-plate-ocr ONNX runtime)
+fast-plate-ocr[onnx]>=0.3.0

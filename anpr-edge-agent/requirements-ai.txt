@@ -1,0 +1,6 @@
+# YOLO plate detection for ANPR_PROVIDER=yolo_ocr
+# Also requires: pip install -r requirements-ocr.txt (fast-plate-ocr)
+#
+# Download model: ./scripts/download-yolo-model.sh
+
+ultralytics>=8.1.0
