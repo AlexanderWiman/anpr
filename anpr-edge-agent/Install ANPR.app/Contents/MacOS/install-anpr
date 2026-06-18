@@ -1,0 +1,64 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG="${HOME}/Library/Logs/anpr-installer.log"
+mkdir -p "$(dirname "$LOG")"
+exec > >(tee -a "$LOG") 2>&1
+
+echo "=== ANPR installer $(date) ==="
+
+APP_BUNDLE="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(dirname "$APP_BUNDLE")"
+cd "$ROOT" || exit 1
+echo "ROOT=$ROOT"
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+PORT="${ANPR_INSTALLER_PORT:-17880}"
+export ANPR_INSTALLER_PORT="$PORT"
+
+alert() {
+  osascript -e "display alert \"Install ANPR\" message \"$1\" as critical" 2>/dev/null || true
+}
+
+notify() {
+  osascript -e "display notification \"$1\" with title \"Install ANPR\"" 2>/dev/null || true
+}
+
+# Synlig feedback direkt — innan Python hinner starta
+notify "Öppnar installationsguiden…"
+
+find_python() {
+  local py
+  for py in \
+    "$ROOT/.venv/bin/python" \
+    "$ROOT/.venv/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/Current/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" \
+    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3" \
+    "/opt/homebrew/bin/python3" \
+    "/usr/local/bin/python3" \
+    "/usr/bin/python3"; do
+    if [ -x "$py" ] 2>/dev/null; then
+      echo "$py"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PY="$(find_python || true)"
+if [ -z "$PY" ]; then
+  open "https://www.python.org/downloads/" 2>/dev/null || true
+  alert "Python hittades inte. Installera Python 3.11+ från python.org och försök igen. Logg: $LOG"
+  exit 1
+fi
+echo "PYTHON=$PY"
+
+# Guiden redan igång? Öppna webbläsaren direkt — ingen väntan i docken
+if curl -sf "http://127.0.0.1:${PORT}/api/ping" >/dev/null 2>&1; then
+  open "http://127.0.0.1:${PORT}"
+fi
+
+export ANPR_INSTALLER_OPEN=open
+exec "$PY" -m installer

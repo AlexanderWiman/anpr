@@ -9,7 +9,7 @@ if exist "%CONFIG%" (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo ERROR: ANPR not installed. Run Installer.cmd first.
+    echo ERROR: ANPR not installed. Run launch\Installer.cmd first.
     exit /b 1
 )
 

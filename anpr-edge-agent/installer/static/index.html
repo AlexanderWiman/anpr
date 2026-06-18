@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installera ANPR</title>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+  <div class="window">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">ANPR</div>
+        <p>Registreringsskyltar</p>
+      </div>
+      <nav id="steps-nav"></nav>
+    </aside>
+
+    <main class="content">
+      <!-- Steg 0: Välkommen -->
+      <section class="step active" data-step="0">
+        <h1>Välkommen</h1>
+        <p class="lead">Den här guiden installerar ANPR på den här datorn. Vi kontrollerar först att datorn har rätt program.</p>
+        <div id="prereq-panel" class="prereq-panel"></div>
+        <p class="hint hidden" id="prereq-restart-hint"></p>
+        <div class="note">
+          Du behöver också <strong>kamera-IP</strong> och en <strong>token</strong> från IT innan du går vidare.
+        </div>
+      </section>
+
+      <!-- Steg 1: Anläggning -->
+      <section class="step" data-step="1">
+        <h1>Välj anläggning</h1>
+        <p class="lead">Var ska kameran rapportera ifrån?</p>
+        <label class="field">
+          <span>Anläggning</span>
+          <select id="site"></select>
+        </label>
+        <label class="field">
+          <span>Kamera-ID</span>
+          <input id="camera-id" value="entrance-1" placeholder="entrance-1">
+        </label>
+        <label class="field">
+          <span>Riktning</span>
+          <select id="direction">
+            <option value="entry">Infart (entry)</option>
+            <option value="exit">Utfart (exit)</option>
+          </select>
+        </label>
+      </section>
+
+      <!-- Steg 2: Kamera -->
+      <section class="step" data-step="2">
+        <h1>Kamera</h1>
+        <p class="lead">Ange IP och inloggning till kameran på det lokala nätverket.</p>
+        <label class="field">
+          <span>Kamera-IP</span>
+          <input id="camera-ip" value="192.168.0.96" placeholder="192.168.0.96">
+        </label>
+        <div class="field">
+          <span>Kameratyp</span>
+          <div class="radio-group">
+            <label class="radio-row">
+              <input type="radio" name="cam-type" value="tapo" checked>
+              <span class="radio-label">
+                <strong>Tapo (TP-Link)</strong>
+                <em>RTSP med konto — vanligast hos oss</em>
+              </span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" name="cam-type" value="ip_webcam">
+              <span class="radio-label">
+                <strong>IP Webcam</strong>
+                <em>HTTP-videofeed utan lösenord</em>
+              </span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" name="cam-type" value="rtsp">
+              <span class="radio-label">
+                <strong>Annan RTSP-kamera</strong>
+                <em>Egen sökväg och port</em>
+              </span>
+            </label>
+          </div>
+        </div>
+        <label class="field">
+          <span>Port</span>
+          <input id="camera-port" type="number" value="554">
+        </label>
+        <div id="auth-fields" class="auth-box">
+          <p class="auth-hint">Tapo: skapa ett kamerakonto i Tapo-appen (Advanced Settings → Camera Account).</p>
+          <label class="field compact">
+            <span>Användarnamn</span>
+            <input id="rtsp-user" autocomplete="username" placeholder="t.ex. anpr">
+          </label>
+          <label class="field compact">
+            <span>Lösenord</span>
+            <input id="rtsp-pass" type="password" autocomplete="current-password" placeholder="Kamerans lösenord">
+          </label>
+        </div>
+        <div id="rtsp-extra" class="rtsp-box hidden">
+          <label class="field compact">
+            <span>RTSP-sökväg</span>
+            <input id="rtsp-path" value="/stream1" placeholder="/stream1">
+          </label>
+        </div>
+        <p class="hint" id="camera-preview"></p>
+      </section>
+
+      <!-- Steg 3: Backend -->
+      <section class="step" data-step="3">
+        <h1>Anslutning till molnet</h1>
+        <p class="lead">Uppgifterna får ni från IT.</p>
+        <label class="field">
+          <span>Backend-token</span>
+          <input id="token" type="password" placeholder="Klistra in token">
+        </label>
+        <label class="field">
+          <span>Backend-URL</span>
+          <input id="backend-url" placeholder="https://...">
+        </label>
+      </section>
+
+      <!-- Steg 4: Installera -->
+      <section class="step" data-step="4">
+        <h1>Installera</h1>
+        <p class="lead">Kontrollera uppgifterna och starta installationen.</p>
+        <dl class="summary" id="summary"></dl>
+        <div class="progress-wrap hidden" id="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+          <p class="progress-msg" id="progress-msg">Förbereder...</p>
+        </div>
+      </section>
+
+      <!-- Steg 5: Klart -->
+      <section class="step" data-step="5">
+        <div class="done-icon">✓</div>
+        <h1>Klart!</h1>
+        <p class="lead">ANPR är installerat och körs. Systemet startar automatiskt när datorn startas om.</p>
+        <p class="hint">Genvägen <strong>ANPR</strong> på skrivbordet öppnar kontrollpanelen.</p>
+        <button type="button" class="btn primary" id="btn-open">Öppna ANPR</button>
+      </section>
+
+      <footer class="footer">
+        <button type="button" class="btn ghost" id="btn-back">Tillbaka</button>
+        <button type="button" class="btn primary" id="btn-next">Fortsätt</button>
+      </footer>
+    </main>
+  </div>
+  <script src="/static/wizard.js?v=3"></script>
+</body>
+</html>

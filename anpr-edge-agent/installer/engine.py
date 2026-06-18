@@ -11,13 +11,14 @@ import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 
 @dataclass
 class InstallConfig:
     site_id: str
     camera_ip: str
-    camera_type: str  # ip_webcam | rtsp
+    camera_type: str  # tapo | ip_webcam | rtsp
     camera_port: int
     rtsp_path: str
     rtsp_user: str
@@ -51,14 +52,17 @@ def build_camera_url(cfg: InstallConfig) -> str:
         return f"http://{ip}:{port}/videofeed"
 
     port = cfg.camera_port or 554
-    path = (cfg.rtsp_path or "/stream1").strip()
+    if cfg.camera_type == "tapo":
+        path = "/stream1"
+    else:
+        path = (cfg.rtsp_path or "/stream1").strip()
     if not path.startswith("/"):
         path = f"/{path}"
     if cfg.rtsp_user:
-        auth = cfg.rtsp_user
-        if cfg.rtsp_password:
-            auth = f"{cfg.rtsp_user}:{cfg.rtsp_password}"
-        return f"rtsp://{auth}@{ip}:{port}{path}"
+        user = quote(cfg.rtsp_user, safe="")
+        password = quote(cfg.rtsp_password or "", safe="")
+        auth = f"{user}:{password}@" if cfg.rtsp_password else f"{user}@"
+        return f"rtsp://{auth}{ip}:{port}{path}"
     return f"rtsp://{ip}:{port}{path}"
 
 
@@ -285,7 +289,7 @@ def start_agent(app_dir: Path, log: Callable[[str], None]) -> None:
         subprocess.Popen([str(py), "-m", "src.main"], cwd=app_dir)
 
 
-def run_install(cfg: InstallConfig, log: Callable[[str], None]) -> None:
+def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser: bool = True) -> None:
     source = repo_root()
     target = install_dir()
 
@@ -296,15 +300,11 @@ def run_install(cfg: InstallConfig, log: Callable[[str], None]) -> None:
     create_dashboard_shortcut(log)
     start_agent(target, log)
     log("Klart!")
-    webbrowser.open("http://127.0.0.1:8080")
+    if open_browser:
+        webbrowser.open("http://127.0.0.1:8080")
 
 
 def check_prerequisites() -> list[str]:
-    issues: list[str] = []
-    if sys.version_info < (3, 11):
-        issues.append("Python 3.11+ krävs. Ladda ner från python.org")
-    if shutil.which("ffmpeg") is None:
-        issues.append(
-            "ffmpeg saknas (behövs för kamera). Mac: brew install ffmpeg. Windows: winget install Gyan.FFmpeg"
-        )
-    return issues
+    from installer.prerequisites import check_prerequisites as _check
+
+    return _check()

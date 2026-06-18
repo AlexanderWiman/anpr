@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Startar ANPR-installation…</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: #f8fafc;
+    }
+    p {
+      color: #94a3b8;
+      line-height: 1.5;
+      font-size: 0.95rem;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      margin: 1.75rem auto 0;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Förbereder installationsguiden</h1>
+    <p id="status">Startar installationsguiden på den här datorn…</p>
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="hint">Stäng inte detta fönster — du skickas vidare automatiskt.</p>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get("port") || "17880";
+    const base = `http://127.0.0.1:${port}`;
+    const status = document.getElementById("status");
+    let attempts = 0;
+
+    async function poll() {
+      attempts += 1;
+      if (attempts > 3) {
+        status.textContent =
+          "Laddar ner små Python-bibliotek till guiden (FastAPI). Första gången kan det ta några minuter.";
+      }
+      if (attempts > 40) {
+        status.textContent =
+          "Fortfarande igång… Kontrollera internet. Om det tar lång tid, öppna http://127.0.0.1:" +
+          port +
+          " manuellt.";
+      }
+      try {
+        const res = await fetch(`${base}/api/ping`, { cache: "no-store" });
+        if (res.ok) {
+          window.location.replace(base + "/");
+          return;
+        }
+      } catch (_) {}
+      setTimeout(poll, 600);
+    }
+
+    poll();
+  </script>
+</body>
+</html>

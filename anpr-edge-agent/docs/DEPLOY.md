@@ -1,4 +1,6 @@
-# Deployment files
+# Deployment — ANPR Edge Agent
+
+Konfigurationsfiler för avancerad installation finns i mappen [`deploy/`](../deploy/).
 
 ## Site profiles
 
@@ -11,7 +13,7 @@ Workers choose site at start via `choose-site` (Windows: `start-anpr.cmd`, Linux
 
 | File | Purpose |
 |------|---------|
-| `env.production.windows.example` | Legacy single-file env for NSSM install |
+| `deploy/env.production.windows.example` | Legacy single-file env for NSSM install |
 | `nssm.exe` | *(you provide)* — [download NSSM](https://nssm.cc/download) |
 
 ```powershell
@@ -24,8 +26,8 @@ Workers choose site at start via `choose-site` (Windows: `start-anpr.cmd`, Linux
 
 | File | Purpose |
 |------|---------|
-| `anpr-edge-agent.service` | systemd unit |
-| `env.production.example` | Legacy single-file env for systemd |
+| `deploy/anpr-edge-agent.service` | systemd unit |
+| `deploy/env.production.example` | Legacy single-file env for systemd |
 
 ```bash
 sudo ./scripts/install-systemd.sh
@@ -35,10 +37,18 @@ sudo ./scripts/install-systemd.sh
 
 | File | Purpose |
 |------|---------|
-| `com.anpr.edge-agent.plist` | LaunchAgent template (user login) |
+| `deploy/com.anpr.edge-agent.plist` | LaunchAgent template (user login) |
 
 ```bash
 ./scripts/install-mac.sh
 ./scripts/install-mac-shortcut.sh   # desktop only
 ./scripts/uninstall-mac.sh
 ```
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Requires `.env` in project root (copy from `.env.example`).

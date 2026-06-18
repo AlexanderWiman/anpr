@@ -16,9 +16,12 @@ All bildbehandling sker lokalt. Endast registreringsnummer skickas till er centr
 
 | Mac | Windows |
 |-----|---------|
-| Dubbelklicka **Installer.command** | Dubbelklicka **Installer.cmd** |
+| I **Finder**: dubbelklicka **Install ANPR** | Dubbelklicka **launch/Installer.cmd** |
+| Reserv (Terminal): **launch/Installer.command** | Förutsättningar: **launch/Install-Prerequisites.cmd** |
 
-*(Om Mac frågar: högerklicka → Öppna första gången.)*
+En **installationsguide** öppnas (som när man installerar ett vanligt program): Välkommen → Anläggning → Kamera → Token → Installera → Klart.
+
+**Viktigt (Mac):** Öppna från **Finder**, inte från Cursor.
 
 ### 3. Fyll i formuläret
 
@@ -26,10 +29,11 @@ All bildbehandling sker lokalt. Endast registreringsnummer skickas till er centr
 |------|---------|
 | **Anläggning** | Falun |
 | **Kamera-IP** | `192.168.0.96` |
-| **Kameratyp** | IP Webcam eller RTSP |
+| **Kameratyp** | Tapo (TP-Link) eller annan RTSP |
+| **Kamerakonto** | Användarnamn + lösenord (Tapo Camera Account) |
 | **Backend-token** | (få från IT) |
 
-Klicka **Installera och starta**. Första gången tar några minuter (laddar ner AI-modell).
+Klicka **Installera**. Första gången tar några minuter (laddar ner AI-modell).
 
 ### 4. Klart
 
@@ -55,12 +59,16 @@ Klicka **Installera och starta**. Första gången tar några minuter (laddar ner
 |--------|---------|
 | **Backend-token** | Hemlig nyckel |
 | **Kamera-IP** | `192.168.0.96` |
-| **Kameratyp** | IP Webcam-app eller RTSP-kamera |
+| **Kameratyp** | Tapo med RTSP-konto |
 
-**Program som behövs (IT installerar en gång):**
+**Program som behövs** — guiden kan installera det mesta automatiskt:
 
-- [Python 3.11+](https://www.python.org/downloads/) — kryssa i **Add Python to PATH** (Windows)
-- [FFmpeg](https://ffmpeg.org) — Mac: `brew install ffmpeg`, Windows: `winget install Gyan.FFmpeg`
+| Mac | Windows |
+|-----|---------|
+| Dubbelklicka **Install ANPR** — följ steg 1 | Dubbelklicka **launch/Installer.cmd** |
+| Saknas Homebrew? **scripts/install-prerequisites.sh** | Saknas winget? **launch/Install-Prerequisites.cmd** |
+
+Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automatiskt** (via Homebrew eller winget).
 
 ---
 
@@ -68,8 +76,8 @@ Klicka **Installera och starta**. Första gången tar några minuter (laddar ner
 
 | Problem | Åtgärd |
 |---------|--------|
-| Python saknas | Installera från python.org, kör Installer igen |
-| Kamera röd | Kontrollera IP i VLC / webbläsare (`http://IP:8080`) |
+| Python eller ffmpeg saknas | Använd **Installera automatiskt** i guiden, eller **launch/Install-Prerequisites.cmd** / **scripts/install-prerequisites.sh** |
+| Kamera röd | Kontrollera IP och inloggning (Tapo: Camera Account i appen) |
 | Backend röd | Kontrollera internet och token med IT |
 | Inga skyltar | Kameravinkel, belysning |
 
@@ -82,4 +90,4 @@ Klicka **Installera och starta**. Första gången tar några minuter (laddar ner
 
 ## Avancerat (IT)
 
-Manuell installation: `scripts/install-mac.sh`, `scripts/install-windows-service.ps1`, `scripts/install-systemd.sh`
+Se [DEPLOY.md](DEPLOY.md) för manuell installation (systemd, Windows-tjänst, macOS LaunchAgent).
