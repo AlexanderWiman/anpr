@@ -64,6 +64,82 @@ def find_ffmpeg() -> str | None:
     return find_executable("ffmpeg")
 
 
+def _is_windows_store_stub(path: str) -> bool:
+    normalized = path.replace("/", "\\").lower()
+    return "windowsapps" in normalized
+
+
+def _subprocess_flags() -> int:
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
+
+def _python_version_ok(path: str) -> bool:
+    if _is_windows_store_stub(path):
+        return False
+    if not os.path.isfile(path):
+        return False
+    try:
+        proc = subprocess.run(
+            [path, "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"],
+            capture_output=True,
+            timeout=20,
+            creationflags=_subprocess_flags(),
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def find_python_executable() -> str | None:
+    if sys.platform != "win32":
+        if sys.version_info >= (3, 11) and not _is_windows_store_stub(sys.executable):
+            return sys.executable
+        for name in ("python3", "python"):
+            found = find_executable(name)
+            if found and _python_version_ok(found):
+                return found
+        return None
+
+    candidates: list[str] = []
+    py_launcher = find_executable("py")
+    if py_launcher:
+        for flag in ("-3.12", "-3.11", "-3"):
+            try:
+                proc = subprocess.run(
+                    [py_launcher, flag, "-c", "import sys; print(sys.executable)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    creationflags=_subprocess_flags(),
+                )
+                if proc.returncode == 0:
+                    candidates.append(proc.stdout.strip())
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+
+    for name in ("python", "python3"):
+        found = find_executable(name)
+        if found:
+            candidates.append(found)
+
+    local = os.environ.get("LOCALAPPDATA", "")
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    for version in ("313", "312", "311"):
+        candidates.append(os.path.join(local, "Programs", "Python", f"Python{version}", "python.exe"))
+        candidates.append(os.path.join(program_files, f"Python{version}", "python.exe"))
+
+    seen: set[str] = set()
+    for path in candidates:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        if _python_version_ok(path):
+            return path
+    return None
+
+
 def _has_winget() -> bool:
     return sys.platform == "win32" and find_executable("winget") is not None
 
@@ -84,14 +160,22 @@ class PrereqItem:
 
 
 def get_prerequisite_status() -> list[PrereqItem]:
-    py_ok = sys.version_info >= (3, 11)
+    if sys.platform == "win32":
+        py_path = find_python_executable()
+        py_ok = py_path is not None
+        if py_ok:
+            py_msg = f"Python — OK"
+        else:
+            py_msg = "Python 3.11+ saknas (Microsoft Store-alias räknas inte som Python)"
+    else:
+        py_ok = sys.version_info >= (3, 11)
+        if py_ok:
+            py_msg = f"Python {sys.version_info.major}.{sys.version_info.minor} — OK"
+        else:
+            py_msg = "Python 3.11+ saknas"
+
     ff_path = find_ffmpeg()
     ff_ok = ff_path is not None
-
-    if py_ok:
-        py_msg = f"Python {sys.version_info.major}.{sys.version_info.minor} — OK"
-    else:
-        py_msg = "Python 3.11+ saknas"
 
     if ff_ok:
         ff_msg = "ffmpeg — OK"
@@ -110,7 +194,7 @@ def get_prerequisite_status() -> list[PrereqItem]:
             can_auto_install=py_auto and not py_ok,
             manual_url="https://www.python.org/downloads/",
             manual_hint=(
-                "Windows: kryssa i «Add Python to PATH» under installationen"
+                "Windows: kryssa i «Add Python to PATH» eller stäng av Store-alias under Appkörningsalias"
                 if sys.platform == "win32"
                 else "Mac: ladda ner installationspaketet från python.org"
             ),
@@ -151,7 +235,10 @@ def prerequisite_status_payload() -> dict:
 
 def _restart_hint() -> str | None:
     if sys.platform == "win32":
-        return "Starta om installationsguiden efter att Python eller ffmpeg installerats."
+        return (
+            "Stäng guiden och starta launch\\Installer.cmd igen efter att Python installerats. "
+            "Om felet kvarstår: stäng av python.exe under Inställningar → Appkörningsalias."
+        )
     if sys.platform == "darwin":
         return "Starta om installationsguiden om programmen inte hittas direkt."
     return None
