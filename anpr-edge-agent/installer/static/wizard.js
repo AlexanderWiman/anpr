@@ -379,6 +379,8 @@ async function loadSites() {
 
 async function startInstall() {
   $("progress-wrap").classList.remove("hidden");
+  $("progress-msg").textContent =
+    "Startar installation… första gången kan det ta 10–15 minuter. Stäng inte fönstret.";
   $("btn-next").disabled = true;
   $("btn-back").disabled = true;
 

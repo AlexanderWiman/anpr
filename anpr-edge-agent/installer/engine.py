@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from collections.abc import Callable
@@ -174,18 +175,49 @@ def render_env(cfg: InstallConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _run(cmd: list[str], cwd: Path, log: Callable[[str], None], *, optional: bool = False) -> None:
-    log(f"Kör: {' '.join(cmd)}")
+def _run(
+    cmd: list[str],
+    cwd: Path,
+    log: Callable[[str], None],
+    *,
+    optional: bool = False,
+    status_label: str | None = None,
+    heartbeat_seconds: int = 20,
+) -> None:
+    if status_label:
+        log(status_label)
+    else:
+        log(f"Kör: {' '.join(cmd)}")
+
+    stop = threading.Event()
+    started = time.time()
+
+    def heartbeat() -> None:
+        label = status_label or "Arbetar"
+        while not stop.wait(heartbeat_seconds):
+            elapsed = int(time.time() - started)
+            mins, secs = divmod(elapsed, 60)
+            log(f"{label} ({mins}:{secs:02d}) — stäng inte fönstret, detta är normalt")
+
+    hb_thread: threading.Thread | None = None
+    if status_label:
+        hb_thread = threading.Thread(target=heartbeat, daemon=True)
+        hb_thread.start()
+
     flags = 0
     if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
         flags = subprocess.CREATE_NO_WINDOW
-    proc = subprocess.run(
-        cmd,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        creationflags=flags,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            creationflags=flags,
+        )
+    finally:
+        stop.set()
+
     if proc.returncode == 0:
         return
     detail = (proc.stderr or proc.stdout or "").strip()
@@ -197,6 +229,24 @@ def _run(cmd: list[str], cwd: Path, log: Callable[[str], None], *, optional: boo
     if detail:
         message = f"{message}: {detail[:800]}"
     raise RuntimeError(message)
+
+
+def _pip_install(py: Path, requirements_file: str, label: str, app_dir: Path, log: Callable[[str], None]) -> None:
+    _run(
+        [
+            str(py),
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--disable-pip-version-check",
+            "-r",
+            requirements_file,
+        ],
+        app_dir,
+        log,
+        status_label=label,
+    )
 
 
 def _venv_python(app_dir: Path) -> Path:
@@ -251,35 +301,38 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
     if not py.is_file():
         raise RuntimeError(f"Python-miljön skapades inte korrekt: {py}")
 
-    log("Installerar paket (kan ta några minuter)...")
+    log("Installerar programkomponenter (första gången kan ta 10–15 minuter)…")
     _run(
         [str(py), "-m", "pip", "install", "-q", "--disable-pip-version-check", "--upgrade", "pip"],
         app_dir,
         log,
         optional=True,
     )
-    _run(
-        [
-            str(py),
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--disable-pip-version-check",
-            "-r",
-            "requirements.txt",
-            "-r",
-            "requirements-ai.txt",
-            "-r",
-            "requirements-ocr.txt",
-        ],
+    _pip_install(
+        py,
+        "requirements.txt",
+        "Steg 1/4: Grundpaket (kamera och nätverk)…",
+        app_dir,
+        log,
+    )
+    _pip_install(
+        py,
+        "requirements-ai.txt",
+        "Steg 2/4: AI för skyltigenkänning (YOLO) — största nedladdningen, kan ta 5–15 min",
+        app_dir,
+        log,
+    )
+    _pip_install(
+        py,
+        "requirements-ocr.txt",
+        "Steg 3/4: OCR för registreringsskyltar…",
         app_dir,
         log,
     )
 
     model = app_dir / "models" / "plate_yolov8.pt"
     if not model.exists():
-        log("Laddar ner ANPR-modell...")
+        log("Steg 4/4: Laddar ner ANPR-modell…")
         if sys.platform == "win32":
             url = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
             model.parent.mkdir(parents=True, exist_ok=True)

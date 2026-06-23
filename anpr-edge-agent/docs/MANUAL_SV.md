@@ -33,7 +33,7 @@ En **installationsguide** öppnas (som när man installerar ett vanligt program)
 | **Kamerakonto** | Användarnamn + lösenord (Tapo Camera Account) |
 | **Backend-token** | (få från IT) |
 
-Klicka **Installera**. Första gången tar några minuter (laddar ner AI-modell).
+Klicka **Installera**. Första gången tar **10–15 minuter** (laddar ner AI-komponenter från internet). Guiden kan se ut att stå stilla — det är normalt, stäng inte fönstret.
 
 ### 4. Klart
 
