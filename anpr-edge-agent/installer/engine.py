@@ -454,11 +454,16 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         os.chmod(cmd, 0o755)
         log(f"Genväg skapad: {cmd}")
     elif sys.platform == "win32":
-        desktop = Path.home() / "Desktop" / "ANPR.url"
-        desktop.write_text(
-            "[InternetShortcut]\nURL=http://127.0.0.1:8080/\n",
-            encoding="utf-8",
-        )
+        desktop = Path.home() / "Desktop" / "ANPR.cmd"
+        open_script = install_dir() / "scripts" / "open-anpr-dashboard.cmd"
+        if open_script.is_file():
+            shutil.copy2(open_script, desktop)
+        else:
+            desktop = Path.home() / "Desktop" / "ANPR.url"
+            desktop.write_text(
+                "[InternetShortcut]\nURL=http://127.0.0.1:8080/\n",
+                encoding="utf-8",
+            )
         log(f"Genväg skapad: {desktop}")
 
 
