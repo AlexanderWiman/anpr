@@ -89,6 +89,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
     @app.get("/api/status")
     async def api_status():
         await agent.delivery.refresh_backend_status()
+        await agent.booking_hints.refresh_if_stale(max_age_seconds=30)
         return build_status()
 
     @app.get("/api/agent/status")

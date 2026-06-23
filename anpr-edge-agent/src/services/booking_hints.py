@@ -21,6 +21,8 @@ class BookingHintService:
         self._refresh_seconds = max(60, refresh_seconds)
         self._plates: frozenset[str] = frozenset()
         self._refreshed_at: datetime | None = None
+        self._last_error: str | None = None
+        self._refresh_lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
 
     @property
@@ -40,7 +42,26 @@ class BookingHintService:
             "enabled": self._enabled,
             "plateCount": self.plate_count,
             "refreshedAt": self._refreshed_at.isoformat() if self._refreshed_at else None,
+            "lastError": self._last_error,
         }
+
+    async def refresh_if_stale(self, *, max_age_seconds: int = 30) -> None:
+        """Refresh when cache is empty or older than max_age_seconds."""
+        if not self._enabled:
+            return
+
+        now = datetime.now(timezone.utc)
+        if self._refreshed_at is not None:
+            age = (now - self._refreshed_at).total_seconds()
+            if age < max_age_seconds:
+                return
+
+        async with self._refresh_lock:
+            if self._refreshed_at is not None:
+                age = (datetime.now(timezone.utc) - self._refreshed_at).total_seconds()
+                if age < max_age_seconds:
+                    return
+            await self.refresh()
 
     async def refresh(self) -> None:
         if not self._enabled:
@@ -51,6 +72,7 @@ class BookingHintService:
             plates = frozenset(normalize_plate(p) for p in result.get("plates", []))
             self._plates = plates
             self._refreshed_at = datetime.now(timezone.utc)
+            self._last_error = None
             logger.info(
                 "booking hints refreshed",
                 extra={
@@ -59,6 +81,7 @@ class BookingHintService:
                 },
             )
         except Exception as exc:
+            self._last_error = str(exc)
             logger.warning(
                 "booking hints refresh failed",
                 extra={"event": "booking_hints_error", "error": str(exc)},

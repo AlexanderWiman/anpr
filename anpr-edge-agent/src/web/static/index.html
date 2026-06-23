@@ -368,9 +368,15 @@
         ]);
 
         const hints = status.bookingHints;
-        const hintsText = hints?.enabled
-          ? ` · ${hints.plateCount} bokade idag`
-          : '';
+        let hintsText = '';
+        if (hints?.enabled) {
+          hintsText = ` · ${hints.plateCount} bokade idag`;
+          if (hints.lastError) {
+            hintsText += ' (kunde inte hämta bokningar)';
+          } else if (!hints.refreshedAt) {
+            hintsText += ' (hämtar...)';
+          }
+        }
         document.getElementById('site-info').textContent =
           `${status.site.siteId} · ${status.site.cameraId}${hintsText}`;
 
