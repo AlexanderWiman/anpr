@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 
 from src import __version__
 
