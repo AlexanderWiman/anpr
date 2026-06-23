@@ -121,33 +121,47 @@ def fetch_backend_agent_version(backend_url: str) -> dict | None:
 
 
 def remote_update_status(current_version: str | None) -> dict:
+    repo = update_repo()
+    ref = update_ref()
+    release_version, release_zip = fetch_release_tag(repo)
+    main_version = fetch_remote_version(repo, ref)
+    github_version = release_version or main_version
+    github_download = release_zip or f"https://github.com/{repo}/archive/refs/heads/{ref}.zip"
+
+    backend_version: str | None = None
+    backend_download: str | None = None
     backend_url = _read_installed_backend_url()
     if backend_url:
         backend_info = fetch_backend_agent_version(backend_url)
         if backend_info:
-            remote_version = backend_info["version"]
-            return {
-                "remoteVersion": remote_version,
-                "remoteUpdateAvailable": is_newer(remote_version, current_version),
-                "updateSource": "backend",
-                "updateRepo": update_repo(),
-            }
+            backend_version = backend_info["version"]
+            backend_download = backend_info.get("downloadUrl")
 
-    repo = update_repo()
-    release_version, release_zip = fetch_release_tag(repo)
-    main_version = fetch_remote_version(repo, update_ref())
+    # IT-approved release via backend when it advertises a newer version.
+    if backend_version and is_newer(backend_version, current_version):
+        return {
+            "remoteVersion": backend_version,
+            "remoteUpdateAvailable": True,
+            "updateSource": "backend",
+            "downloadUrl": backend_download or github_download,
+            "updateRepo": repo,
+        }
 
-    remote_version = release_version or main_version
-    download_url = release_zip
-    if not download_url:
-        ref = update_ref()
-        download_url = f"https://github.com/{repo}/archive/refs/heads/{ref}.zip"
+    # Fallback to GitHub when backend is missing, stale, or not ahead of installed build.
+    if github_version and is_newer(github_version, current_version):
+        return {
+            "remoteVersion": github_version,
+            "remoteUpdateAvailable": True,
+            "updateSource": "release" if release_version else "main",
+            "downloadUrl": github_download,
+            "updateRepo": repo,
+        }
 
-    available = is_newer(remote_version, current_version)
+    remote_version = backend_version or github_version
     return {
         "remoteVersion": remote_version,
-        "remoteUpdateAvailable": available,
-        "updateSource": "release" if release_version else "main",
+        "remoteUpdateAvailable": False,
+        "updateSource": "backend" if backend_version else ("release" if release_version else "main"),
         "updateRepo": repo,
     }
 
@@ -211,12 +225,7 @@ def run_remote_update(log: Callable[[str], None]) -> None:
 
     current = read_version(install_dir())
     status = remote_update_status(current)
-    download_url = None
-    backend_url = _read_installed_backend_url()
-    if backend_url:
-        backend_info = fetch_backend_agent_version(backend_url)
-        if backend_info:
-            download_url = backend_info.get("downloadUrl")
+    download_url = status.get("downloadUrl")
 
     staging = download_release_source(log, download_url=download_url)
     target = install_dir()

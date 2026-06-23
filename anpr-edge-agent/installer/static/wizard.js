@@ -222,9 +222,13 @@ function renderUpdatePanel() {
   panel.classList.remove("hidden");
 
   if (!hasUpdate) {
+    const remoteLine = remote && remote !== current
+      ? `<p class="hint">Servern anger senaste version <strong>${remote}</strong>.</p>`
+      : "";
     panel.innerHTML = `
       <h2>ANPR är installerat</h2>
-      <p>Version <strong>${current}</strong> — allt är uppdaterat.</p>
+      <p>Installerad version <strong>${current}</strong> — ingen nyare version hittades.</p>
+      ${remoteLine}
       <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden — dina nuvarande inställningar fylls i automatiskt.</p>
     `;
     return;
