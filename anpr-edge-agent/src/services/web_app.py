@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
+def _dashboard_html() -> HTMLResponse:
+    index = STATIC_DIR / "index.html"
+    if not index.is_file():
+        return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
+    html = index.read_text(encoding="utf-8").replace("{{AGENT_VERSION}}", __version__)
+    return HTMLResponse(html)
+
+
 def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
     settings = agent.settings
     app = FastAPI(title="ANPR Edge Agent", version=__version__)
@@ -63,10 +71,11 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
-        index = STATIC_DIR / "index.html"
-        if index.exists():
-            return FileResponse(index)
-        return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
+        return _dashboard_html()
+
+    @app.get("/api/version")
+    async def api_version():
+        return {"version": __version__}
 
     @app.get("/health")
     async def health():

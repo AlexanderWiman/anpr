@@ -245,9 +245,10 @@
     </section>
   </main>
 
-  <footer>ANPR Edge Agent <span id="agent-version">v—</span> · <span id="poll-info">localhost:8080</span></footer>
+  <footer>ANPR Edge Agent <span id="agent-version">v{{AGENT_VERSION}}</span> · <span id="poll-info">localhost:8080</span></footer>
 
   <script>
+    window.__ANPR_VERSION = "{{AGENT_VERSION}}";
     const agentLabels = {
       stopped:  { text: 'Stoppad', hint: 'Tryck Starta för att börja läsa registreringsskyltar.', cls: 'stopped' },
       running:  { text: 'Kör', hint: 'Systemet läser registreringsskyltar från kameran.', cls: 'running' },
@@ -353,6 +354,8 @@
 
         if (status.version) {
           document.getElementById('agent-version').textContent = `v${status.version}`;
+        } else if (window.__ANPR_VERSION) {
+          document.getElementById('agent-version').textContent = `v${window.__ANPR_VERSION}`;
         }
 
         updateControls(status.agent);
