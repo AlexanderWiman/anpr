@@ -245,7 +245,7 @@
     </section>
   </main>
 
-  <footer>ANPR Edge Agent · <span id="poll-info">localhost:8080</span></footer>
+  <footer>ANPR Edge Agent <span id="agent-version">v—</span> · <span id="poll-info">localhost:8080</span></footer>
 
   <script>
     const agentLabels = {
@@ -350,6 +350,10 @@
           : '';
         document.getElementById('site-info').textContent =
           `${status.site.siteId} · ${status.site.cameraId}${hintsText}`;
+
+        if (status.version) {
+          document.getElementById('agent-version').textContent = `v${status.version}`;
+        }
 
         updateControls(status.agent);
 

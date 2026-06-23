@@ -25,6 +25,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
 
         return {
             "status": "ok",
+            "version": __version__,
             "agent": agent_status,
             "site": {
                 "siteId": settings.site_id,
