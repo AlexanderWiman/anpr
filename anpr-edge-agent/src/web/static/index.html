@@ -381,7 +381,10 @@
         document.getElementById('backend-status').style.color = beLabel.color;
         if (be.code === 'ok') {
           document.getElementById('backend-detail').textContent =
-            `Token verifierad · ${be.url || be.detail || '—'}`;
+            `Token …${be.tokenHint || '????'} verifierad · ${be.url || be.detail || '—'}`;
+        } else if (be.code === 'invalid_token') {
+          document.getElementById('backend-detail').textContent =
+            `${be.detail || 'Token ogiltig'} · aktiv token slutar på …${be.tokenHint || '????'}`;
         } else {
           document.getElementById('backend-detail').textContent = be.detail || be.url || '—';
         }

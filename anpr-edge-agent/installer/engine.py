@@ -462,6 +462,46 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         log(f"Genväg skapad: {desktop}")
 
 
+def _pids_listening_on_port(port: int) -> set[str]:
+    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    result = subprocess.run(
+        ["netstat", "-ano"],
+        capture_output=True,
+        text=True,
+        creationflags=flags,
+    )
+    pids: set[str] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local_addr = parts[1]
+        remote_addr = parts[2]
+        pid = parts[-1]
+        if f":{port}" not in local_addr:
+            continue
+        if not remote_addr.endswith(":0"):
+            continue
+        if pid.isdigit() and pid != "0":
+            pids.add(pid)
+    return pids
+
+
+def _stop_windows_agent_processes(app_dir: Path) -> None:
+    flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    marker = str(app_dir).replace("'", "''")
+    ps = (
+        "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+        f"Where-Object {{ $_.CommandLine -like '*{marker}*' -and $_.CommandLine -like '*src.main*' }} | "
+        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps],
+        check=False,
+        creationflags=flags,
+    )
+
+
 def stop_agent(app_dir: Path, log: Callable[[str], None] | None = None, *, port: int = 8080) -> None:
     def _log(msg: str) -> None:
         if log:
@@ -469,27 +509,14 @@ def stop_agent(app_dir: Path, log: Callable[[str], None] | None = None, *, port:
 
     if sys.platform == "win32":
         flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
-        result = subprocess.run(
-            ["netstat", "-ano"],
-            capture_output=True,
-            text=True,
-            creationflags=flags,
-        )
-        pids: set[str] = set()
-        for line in result.stdout.splitlines():
-            if f":{port}" not in line or "LISTENING" not in line.upper():
-                continue
-            parts = line.split()
-            if parts:
-                pids.add(parts[-1])
-
+        _stop_windows_agent_processes(app_dir)
+        pids = _pids_listening_on_port(port)
         for pid in pids:
-            if pid.isdigit() and pid != "0":
-                subprocess.run(
-                    ["taskkill", "/F", "/PID", pid],
-                    check=False,
-                    creationflags=flags,
-                )
+            subprocess.run(
+                ["taskkill", "/F", "/PID", pid],
+                check=False,
+                creationflags=flags,
+            )
         if pids:
             _log("Stoppade tidigare ANPR-process…")
             time.sleep(1)

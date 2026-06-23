@@ -100,6 +100,17 @@ class Settings(BaseSettings):
         return f"{base}/api/anpr/sites/{self.site_id}/expected-plates"
 
 
+def load_settings() -> Settings:
+    """Load settings from the installed support .env when available."""
+    from src.config.env_sync import installed_support_env, sync_installed_env
+
+    sync_installed_env()
+    support = installed_support_env()
+    if support is not None:
+        return Settings(_env_file=str(support))
+    return Settings()
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return load_settings()

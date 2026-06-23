@@ -13,6 +13,8 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*anpr-edge-agent*' -and $_.CommandLine -like '*src.main*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
 set PYTHONUNBUFFERED=1
 set PYTHONPATH=%CD%
 ".venv\Scripts\python.exe" -m src.main

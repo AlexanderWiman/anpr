@@ -48,6 +48,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             },
             "backend": {
                 "url": settings.backend_url,
+                "tokenHint": settings.anpr_agent_token[-4:] if len(settings.anpr_agent_token) >= 4 else "????",
                 **delivery.backend_status.as_dict(),
             },
             "bookingHints": agent.booking_hints.status(),

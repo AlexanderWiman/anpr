@@ -468,6 +468,13 @@ $("btn-next").addEventListener("click", async () => {
       setStep(3);
       return;
     }
+    $("btn-next").disabled = true;
+    const tokenOk = await validateBackendCredentials();
+    $("btn-next").disabled = false;
+    if (!tokenOk) {
+      setStep(3);
+      return;
+    }
     await startInstall();
   }
 });
