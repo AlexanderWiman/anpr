@@ -147,6 +147,24 @@ function validateStep(n) {
   return true;
 }
 
+async function validateBackendCredentials() {
+  const res = await fetch("/api/install/validate-credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      site_id: $("site").value,
+      backend_url: $("backend-url").value.trim(),
+      anpr_token: $("token").value.trim(),
+    }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    alert(data.message || "Token kunde inte verifieras.");
+    return false;
+  }
+  return true;
+}
+
 async function loadExistingInstall() {
   const res = await fetch("/api/install/existing");
   installInfo = await res.json();
@@ -436,6 +454,12 @@ $("btn-next").addEventListener("click", async () => {
   }
   if (currentStep < 4) {
     if (!validateStep(currentStep)) return;
+    if (currentStep === 3) {
+      $("btn-next").disabled = true;
+      const ok = await validateBackendCredentials();
+      $("btn-next").disabled = false;
+      if (!ok) return;
+    }
     setStep(currentStep + 1);
     return;
   }

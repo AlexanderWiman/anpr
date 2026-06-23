@@ -54,6 +54,12 @@ class InstallRequest(BaseModel):
     anpr_token: str = Field(min_length=8)
 
 
+class ValidateCredentialsRequest(BaseModel):
+    site_id: str
+    backend_url: str = DEFAULT_BACKEND_URL
+    anpr_token: str = Field(min_length=8)
+
+
 @app.get("/")
 async def index():
     return FileResponse(STATIC_DIR / "index.html")
@@ -157,6 +163,18 @@ async def api_prerequisites_job_status():
 @app.get("/api/install/existing")
 async def api_install_existing():
     return install_status_payload()
+
+
+@app.post("/api/install/validate-credentials")
+async def api_validate_credentials(body: ValidateCredentialsRequest):
+    from installer.token_check import validate_backend_credentials
+
+    ok, message = validate_backend_credentials(
+        site_id=body.site_id,
+        backend_url=body.backend_url.rstrip("/"),
+        token=body.anpr_token,
+    )
+    return {"ok": ok, "message": message}
 
 
 @app.get("/api/install/status")

@@ -462,7 +462,50 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         log(f"Genväg skapad: {desktop}")
 
 
+def stop_agent(app_dir: Path, log: Callable[[str], None] | None = None, *, port: int = 8080) -> None:
+    def _log(msg: str) -> None:
+        if log:
+            log(msg)
+
+    if sys.platform == "win32":
+        flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            creationflags=flags,
+        )
+        pids: set[str] = set()
+        for line in result.stdout.splitlines():
+            if f":{port}" not in line or "LISTENING" not in line.upper():
+                continue
+            parts = line.split()
+            if parts:
+                pids.add(parts[-1])
+
+        for pid in pids:
+            if pid.isdigit() and pid != "0":
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", pid],
+                    check=False,
+                    creationflags=flags,
+                )
+        if pids:
+            _log("Stoppade tidigare ANPR-process…")
+            time.sleep(1)
+        return
+
+    if sys.platform == "darwin":
+        uid = os.getuid()
+        subprocess.run(
+            ["launchctl", "kickstart", "-k", f"gui/{uid}/com.anpr.edge-agent"],
+            check=False,
+        )
+        time.sleep(1)
+
+
 def start_agent(app_dir: Path, log: Callable[[str], None]) -> None:
+    stop_agent(app_dir, log)
     if sys.platform == "darwin":
         uid = os.getuid()
         subprocess.run(
@@ -549,6 +592,19 @@ def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser:
 
     if already:
         log("Uppdaterar konfiguration…")
+
+    from installer.token_check import validate_backend_credentials
+
+    log("Verifierar token mot backend…")
+    ok, message = validate_backend_credentials(
+        site_id=cfg.site_id,
+        backend_url=cfg.backend_url,
+        token=cfg.anpr_token,
+    )
+    if not ok:
+        raise RuntimeError(message)
+    log(message)
+
     copy_application(source, target, log)
     setup_python_env(target, log)
     write_config(cfg, log)

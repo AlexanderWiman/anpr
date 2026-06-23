@@ -376,12 +376,15 @@
         };
 
         const be = status.backend;
-        const beLabel =
-          (be.code && backendLabels[be.code]) ||
-          (be.reachable ? backendLabels.ok : backendLabels.down);
+        const beLabel = backendLabels[be.code] || backendLabels.unknown;
         document.getElementById('backend-status').textContent = beLabel.text;
         document.getElementById('backend-status').style.color = beLabel.color;
-        document.getElementById('backend-detail').textContent = be.detail || be.url || '—';
+        if (be.code === 'ok') {
+          document.getElementById('backend-detail').textContent =
+            `Token verifierad · ${be.url || be.detail || '—'}`;
+        } else {
+          document.getElementById('backend-detail').textContent = be.detail || be.url || '—';
+        }
 
         document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;
         document.getElementById('failed-count').textContent =
