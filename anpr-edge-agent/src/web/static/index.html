@@ -245,10 +245,9 @@
     </section>
   </main>
 
-  <footer>ANPR Edge Agent <span id="agent-version">v{{AGENT_VERSION}}</span> · <span id="poll-info">localhost:8080</span></footer>
+  <footer>ANPR Edge Agent <span id="agent-version">v…</span> · <span id="poll-info">localhost:8080</span></footer>
 
   <script>
-    window.__ANPR_VERSION = "{{AGENT_VERSION}}";
     const agentLabels = {
       stopped:  { text: 'Stoppad', hint: 'Tryck Starta för att börja läsa registreringsskyltar.', cls: 'stopped' },
       running:  { text: 'Kör', hint: 'Systemet läser registreringsskyltar från kameran.', cls: 'running' },
@@ -265,6 +264,24 @@
     };
 
     let busy = false;
+
+    async function loadVersion() {
+      const el = document.getElementById('agent-version');
+      for (const url of ['/api/version', '/api/status', '/health']) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.version) {
+            el.textContent = `v${data.version}`;
+            window.__ANPR_VERSION = data.version;
+            return;
+          }
+        } catch {
+          // try next endpoint
+        }
+      }
+    }
 
     function fmtTime(iso) {
       if (!iso) return '—';
@@ -445,6 +462,7 @@
     }
 
     refresh();
+    loadVersion();
     setInterval(refresh, 3000);
   </script>
 </body>

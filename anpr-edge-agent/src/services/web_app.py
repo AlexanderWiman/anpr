@@ -17,7 +17,8 @@ def _dashboard_html() -> HTMLResponse:
     index = STATIC_DIR / "index.html"
     if not index.is_file():
         return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
-    html = index.read_text(encoding="utf-8").replace("{{AGENT_VERSION}}", __version__)
+    html = index.read_text(encoding="utf-8")
+    html = html.replace('id="agent-version">v…</span>', f'id="agent-version">v{__version__}</span>')
     return HTMLResponse(html)
 
 
