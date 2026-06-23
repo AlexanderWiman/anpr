@@ -43,7 +43,13 @@ function setStep(n) {
 
   $("btn-back").style.visibility = n === 0 || n === 5 ? "hidden" : "visible";
   $("btn-next").textContent =
-    n === 4 ? "Installera" : n === 5 ? "Stäng" : "Fortsätt";
+    n === 4
+      ? installInfo.installed
+        ? "Spara inställningar"
+        : "Installera"
+      : n === 5
+        ? "Stäng"
+        : "Fortsätt";
   $("btn-next").classList.toggle("hidden", n === 5);
 
   if (n === 4) fillSummary();
@@ -145,6 +151,40 @@ async function loadExistingInstall() {
   const res = await fetch("/api/install/existing");
   installInfo = await res.json();
   renderUpdatePanel();
+  applySavedConfig(installInfo.savedConfig);
+}
+
+function applySavedConfig(cfg) {
+  if (!cfg) return;
+
+  if (cfg.site_id) {
+    const siteEl = $("site");
+    const known = [...siteEl.options].some((opt) => opt.value === cfg.site_id);
+    if (!known) {
+      const opt = document.createElement("option");
+      opt.value = cfg.site_id;
+      opt.textContent = cfg.site_id;
+      siteEl.appendChild(opt);
+    }
+    siteEl.value = cfg.site_id;
+  }
+
+  if (cfg.camera_id) $("camera-id").value = cfg.camera_id;
+  if (cfg.direction) $("direction").value = cfg.direction;
+  if (cfg.camera_ip) $("camera-ip").value = cfg.camera_ip;
+  if (cfg.camera_port) $("camera-port").value = String(cfg.camera_port);
+  if (cfg.rtsp_path) $("rtsp-path").value = cfg.rtsp_path;
+  if (cfg.rtsp_user) $("rtsp-user").value = cfg.rtsp_user;
+  if (cfg.rtsp_password) $("rtsp-pass").value = cfg.rtsp_password;
+  if (cfg.backend_url) $("backend-url").value = cfg.backend_url;
+  if (cfg.anpr_token) $("token").value = cfg.anpr_token;
+
+  if (cfg.camera_type) {
+    const radio = document.querySelector(`input[name="cam-type"][value="${cfg.camera_type}"]`);
+    if (radio) radio.checked = true;
+  }
+
+  updateCameraUi();
 }
 
 function renderUpdatePanel() {
@@ -167,7 +207,7 @@ function renderUpdatePanel() {
     panel.innerHTML = `
       <h2>ANPR är installerat</h2>
       <p>Version <strong>${current}</strong> — allt är uppdaterat.</p>
-      <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden nedan.</p>
+      <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden — dina nuvarande inställningar fylls i automatiskt.</p>
     `;
     return;
   }
@@ -423,7 +463,13 @@ document.querySelectorAll('input[name="cam-type"]').forEach((el) => {
 
 buildNav();
 setStep(0);
-loadPrereqs();
-loadExistingInstall();
-loadSites();
-updateCameraUi();
+
+async function initWizard() {
+  await Promise.all([loadPrereqs(), loadSites()]);
+  await loadExistingInstall();
+  if (!installInfo.savedConfig) {
+    updateCameraUi();
+  }
+}
+
+initWizard();

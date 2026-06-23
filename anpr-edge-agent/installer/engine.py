@@ -11,7 +11,7 @@ import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 
 @dataclass
@@ -64,6 +64,67 @@ def build_camera_url(cfg: InstallConfig) -> str:
         auth = f"{user}:{password}@" if cfg.rtsp_password else f"{user}@"
         return f"rtsp://{auth}{ip}:{port}{path}"
     return f"rtsp://{ip}:{port}{path}"
+
+
+def parse_env_text(text: str) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        env[key.strip()] = value.strip().strip('"').strip("'")
+    return env
+
+
+def decode_camera_url(url: str) -> dict[str, str | int]:
+    parsed = urlparse(url)
+    if parsed.scheme == "http":
+        return {
+            "camera_type": "ip_webcam",
+            "camera_ip": parsed.hostname or "",
+            "camera_port": parsed.port or 8080,
+            "rtsp_path": parsed.path or "/videofeed",
+            "rtsp_user": "",
+            "rtsp_password": "",
+        }
+
+    path = parsed.path or "/stream1"
+    user = unquote(parsed.username) if parsed.username else ""
+    password = unquote(parsed.password) if parsed.password else ""
+    camera_type = "tapo" if path == "/stream1" else "rtsp"
+
+    return {
+        "camera_type": camera_type,
+        "camera_ip": parsed.hostname or "",
+        "camera_port": parsed.port or 554,
+        "rtsp_path": path,
+        "rtsp_user": user,
+        "rtsp_password": password,
+    }
+
+
+def read_installed_config() -> dict | None:
+    env_path = support_dir() / ".env"
+    if not env_path.is_file():
+        return None
+
+    env = parse_env_text(env_path.read_text(encoding="utf-8"))
+    camera_url = env.get("CAMERA_RTSP_URL", "")
+    if not camera_url:
+        return None
+
+    camera = decode_camera_url(camera_url)
+    return {
+        "site_id": env.get("SITE_ID", ""),
+        "camera_id": env.get("CAMERA_ID", "entrance-1"),
+        "direction": env.get("DIRECTION", "entry"),
+        "backend_url": env.get("BACKEND_URL", ""),
+        "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
+        **camera,
+    }
 
 
 def render_env(cfg: InstallConfig) -> str:
@@ -314,7 +375,7 @@ def install_status_payload() -> dict:
     local_update = bool(installed and available and (not current or current != available))
     remote = remote_update_status(current) if installed else {}
 
-    return {
+    payload: dict = {
         "installed": installed,
         "currentVersion": current,
         "availableVersion": available,
@@ -323,6 +384,11 @@ def install_status_payload() -> dict:
         "installDir": str(target),
         **remote,
     }
+    if installed:
+        saved = read_installed_config()
+        if saved:
+            payload["savedConfig"] = saved
+    return payload
 
 
 def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None:
@@ -346,7 +412,10 @@ def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None
 def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser: bool = True) -> None:
     source = repo_root()
     target = install_dir()
+    already = is_installed()
 
+    if already:
+        log("Uppdaterar konfiguration…")
     copy_application(source, target, log)
     setup_python_env(target, log)
     write_config(cfg, log)
