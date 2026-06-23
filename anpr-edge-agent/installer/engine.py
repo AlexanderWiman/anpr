@@ -423,6 +423,10 @@ def _install_mac_launchagent(app_dir: Path, log: Callable[[str], None]) -> None:
 
 
 def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
+    run_script = app_dir / "scripts" / "run-agent.cmd"
+    task_name = "ANPREdgeAgent"
+    flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+
     startup = (
         Path(os.environ["APPDATA"])
         / "Microsoft"
@@ -431,14 +435,42 @@ def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
         / "Programs"
         / "Startup"
     )
-    startup.mkdir(parents=True, exist_ok=True)
-    bat = startup / "ANPR Edge Agent.bat"
-    run_script = app_dir / "scripts" / "run-agent.cmd"
-    bat.write_text(
-        f'@echo off\r\nstart "" /min "{run_script}"\r\n',
-        encoding="utf-8",
+    old_bat = startup / "ANPR Edge Agent.bat"
+    if old_bat.is_file():
+        old_bat.unlink()
+
+    ps_run = str(run_script).replace("'", "''")
+    ps_dir = str(app_dir).replace("'", "''")
+    ps = f"""
+Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue
+$action = New-ScheduledTaskAction -Execute '{ps_run}' -WorkingDirectory '{ps_dir}'
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$settings = New-ScheduledTaskSettingsSet `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -RestartCount 5 `
+  -RestartInterval (New-TimeSpan -Minutes 1) `
+  -ExecutionTimeLimit (New-TimeSpan -Days 3650)
+Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Settings $settings `
+  -Description 'ANPR Edge Agent' | Out-Null
+"""
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps],
+        capture_output=True,
+        text=True,
+        creationflags=flags,
     )
-    log("Autostart aktiverad (startar vid inloggning)")
+    if result.returncode != 0:
+        startup.mkdir(parents=True, exist_ok=True)
+        bat = startup / "ANPR Edge Agent.bat"
+        bat.write_text(
+            f'@echo off\r\nstart "" /min "{run_script}"\r\n',
+            encoding="utf-8",
+        )
+        log(f"Autostart via Startup-mappen: {bat}")
+        return
+
+    log("Autostart aktiverad (schemalagd uppgift vid inloggning)")
 
 
 def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
@@ -451,17 +483,53 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         os.chmod(cmd, 0o755)
         log(f"Genväg skapad: {cmd}")
     elif sys.platform == "win32":
-        desktop = Path.home() / "Desktop" / "ANPR.cmd"
-        open_script = install_dir() / "scripts" / "open-anpr-dashboard.cmd"
-        if open_script.is_file():
-            shutil.copy2(open_script, desktop)
-        else:
-            desktop = Path.home() / "Desktop" / "ANPR.url"
-            desktop.write_text(
+        from installer.windows_paths import windows_desktop_dir
+
+        desktop = windows_desktop_dir()
+        target = install_dir()
+        open_script = target / "scripts" / "open-anpr-dashboard.cmd"
+        flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+
+        for old_name in ("ANPR.url", "ANPR.cmd", "ANPR.lnk"):
+            old = desktop / old_name
+            if old.is_file():
+                old.unlink()
+                log(f"Tog bort gammal genväg: {old}")
+
+        if not open_script.is_file():
+            desktop_url = desktop / "ANPR.url"
+            desktop_url.write_text(
                 "[InternetShortcut]\nURL=http://127.0.0.1:8080/\n",
                 encoding="utf-8",
             )
-        log(f"Genväg skapad: {desktop}")
+            log(f"Genväg skapad: {desktop_url}")
+            return
+
+        lnk = desktop / "ANPR.lnk"
+        ps_open = str(open_script).replace("'", "''")
+        ps_work = str(target).replace("'", "''")
+        ps_lnk = str(lnk).replace("'", "''")
+        ps = f"""
+$w = New-Object -ComObject WScript.Shell
+$s = $w.CreateShortcut('{ps_lnk}')
+$s.TargetPath = '{ps_open}'
+$s.WorkingDirectory = '{ps_work}'
+$s.WindowStyle = 1
+$s.Description = 'Starta ANPR och oppna kontrollpanelen'
+$s.Save()
+"""
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            text=True,
+            creationflags=flags,
+        )
+        if result.returncode != 0:
+            desktop_cmd = desktop / "ANPR.cmd"
+            shutil.copy2(open_script, desktop_cmd)
+            log(f"Genväg skapad: {desktop_cmd}")
+        else:
+            log(f"Genväg skapad: {lnk}")
 
 
 def _pids_listening_on_port(port: int) -> set[str]:

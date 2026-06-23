@@ -95,7 +95,7 @@ Ignorera `%LOCALAPPDATA%\anpr-edge-agent\.env` om den finns (gammal kopia). Star
 | Windows: pip / paketinstallation misslyckas | Stäng guiden, radera mappen `%LOCALAPPDATA%\anpr-edge-agent\.venv` och kör **Installer.cmd** igen |
 | Kamera röd | Kontrollera IP och inloggning (Tapo: Camera Account i appen) |
 | Backend röd / «Fel token» | Kontrollera token med IT och spara om via **Install ANPR** → guiden |
-| 127.0.0.1 nekade anslutning | Agenten körs inte. Dubbelklicka **ANPR** på skrivbordet och vänta upp till 1 minut. Om det fortfarande inte fungerar: kör `%LOCALAPPDATA%\anpr-edge-agent\scripts\run-agent.cmd` (lämna fönstret öppet) |
+| 127.0.0.1 nekade anslutning | Använd genvägen **ANPR** på skrivbordet (inte en gammal webbläsargenväg). Kör `%LOCALAPPDATA%\anpr-edge-agent\scripts\diagnose-windows.cmd` eller `run-agent.cmd` och lämna fönstret öppet. Logg: `data\logs\agent-startup.log` |
 | Inga skyltar | Kameravinkel, belysning |
 
 **Loggar (IT):**
