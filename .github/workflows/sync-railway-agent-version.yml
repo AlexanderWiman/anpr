@@ -1,0 +1,70 @@
+# Sync ANPR_AGENT_LATEST_VERSION on Railway backend when edge agent is pushed to main.
+#
+# Required GitHub secret (anpr repo): RAILWAY_TOKEN
+#   Same project token as auto-care-joy → Railway → Project → Settings → Tokens
+#
+# If variable updates fail (project token permissions), use a workspace token as
+# RAILWAY_API_TOKEN instead and set secrets.RAILWAY_USE_API_TOKEN = true.
+name: Sync agent version to Railway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "anpr-edge-agent/**"
+      - ".github/workflows/sync-railway-agent-version.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-railway-agent-version
+  cancel-in-progress: true
+
+env:
+  RAILWAY_PROJECT_ID: cd64c4cd-2eba-4cd5-b258-bb71274bdb50
+  RAILWAY_ENVIRONMENT: production
+  RAILWAY_SERVICE: backend
+  ANPR_AGENT_DOWNLOAD_URL: https://github.com/AlexanderWiman/anpr/archive/refs/heads/main.zip
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read agent version
+        id: version
+        run: |
+          VERSION=$(grep -E '^__version__\s*=' anpr-edge-agent/src/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$VERSION" ]; then
+            echo "Could not read __version__ from anpr-edge-agent/src/__init__.py"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Agent version: $VERSION"
+
+      - name: Check Railway token
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ] && [ -z "${{ secrets.RAILWAY_API_TOKEN }}" ]; then
+            echo "::error::Add RAILWAY_TOKEN (or RAILWAY_API_TOKEN) to GitHub repo secrets for AlexanderWiman/anpr"
+            exit 1
+          fi
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@4
+
+      - name: Update Railway backend variables
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable set \
+            "ANPR_AGENT_LATEST_VERSION=${{ steps.version.outputs.version }}" \
+            "ANPR_AGENT_DOWNLOAD_URL=${{ env.ANPR_AGENT_DOWNLOAD_URL }}" \
+            --service "${{ env.RAILWAY_SERVICE }}" \
+            --environment "${{ env.RAILWAY_ENVIRONMENT }}" \
+            --project "${{ env.RAILWAY_PROJECT_ID }}"
+
+      - name: Summary
+        run: |
+          echo "Railway backend now advertises ANPR agent ${{ steps.version.outputs.version }}"

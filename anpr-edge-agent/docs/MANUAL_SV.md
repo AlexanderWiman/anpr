@@ -120,15 +120,23 @@ Om knappen inte syns är datorn redan uppdaterad.
 
 ### För IT
 
-**Två sätt att styra uppdateringar:**
+**Släpp ny version:**
 
-1. **GitHub (enklast nu när repot är publikt)** — agenten kollar `main` på `AlexanderWiman/anpr` automatiskt. Höj `__version__` i `src/__init__.py`, pusha till `main`, be personal uppdatera.
-2. **Backend (rekommenderat i produktion)** — sätt på Railway så ni bestämmer *när* anläggningarna ska uppdatera, inte vid varje push:
-   - `ANPR_AGENT_LATEST_VERSION=1.1.0`
-   - `ANPR_AGENT_DOWNLOAD_URL=https://github.com/AlexanderWiman/anpr/archive/refs/heads/main.zip`  
-     (eller en [GitHub Release](https://github.com/AlexanderWiman/anpr/releases)-ZIP)
+1. Höj `__version__` i `anpr-edge-agent/src/__init__.py`
+2. Pusha till `main` på GitHub (`AlexanderWiman/anpr`)
+3. GitHub Actions uppdaterar automatiskt `ANPR_AGENT_LATEST_VERSION` på Railway-backend
+4. Be personal: **Install ANPR** → **Uppdatera automatiskt**
 
-Be personal: **Install ANPR** → **Uppdatera automatiskt**
+**Engångsinställning (GitHub):** lägg samma `RAILWAY_TOKEN` som i `auto-care-joy` under **anpr**-repots Secrets → Actions.
+
+Manuellt från utvecklardator:
+
+```bash
+export RAILWAY_TOKEN=...
+./anpr-edge-agent/scripts/sync-railway-agent-version.sh
+```
+
+Om Railway-variablerna saknas faller installern tillbaka till GitHub `main` direkt.
 
 Se även backend-dokumentationen `ANPR_EDGE_AGENT.md`.
 
