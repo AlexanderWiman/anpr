@@ -390,9 +390,6 @@ def write_config(cfg: InstallConfig, log: Callable[[str], None]) -> Path:
     env_path = support / ".env"
     env_text = render_env(cfg)
     env_path.write_text(env_text, encoding="utf-8")
-
-    app_env = install_dir() / ".env"
-    app_env.write_text(env_text, encoding="utf-8")
     log(f"Konfiguration sparad: {env_path}")
     return env_path
 

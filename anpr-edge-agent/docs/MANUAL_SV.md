@@ -72,6 +72,20 @@ Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automa
 
 ---
 
+## Konfiguration (IT)
+
+**Windows — redigera bara den här filen:**
+
+`%LOCALAPPDATA%\anpr-edge-agent\data\.env`
+
+Ignorera `%LOCALAPPDATA%\anpr-edge-agent\.env` om den finns (gammal kopia). Starta om med `run-agent.cmd` efter ändringar.
+
+**Mac:**
+
+`~/Library/Application Support/anpr-edge-agent/.env`
+
+---
+
 ## Felsökning
 
 | Problem | Åtgärd |

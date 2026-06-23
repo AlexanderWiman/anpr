@@ -3,9 +3,11 @@ REM Wrapper to start ANPR Edge Agent on Windows (user install).
 setlocal
 cd /d "%~dp0.."
 
-set "CONFIG=%LOCALAPPDATA%\anpr-edge-agent\data\.env"
-if exist "%CONFIG%" (
-    copy /Y "%CONFIG%" ".env" >nul
+if not exist "%LOCALAPPDATA%\anpr-edge-agent\data\.env" (
+    echo ERROR: Config missing. Run launch\Installer.cmd or edit:
+    echo %LOCALAPPDATA%\anpr-edge-agent\data\.env
+    pause
+    exit /b 1
 )
 
 if not exist ".venv\Scripts\python.exe" (

@@ -7,9 +7,7 @@ SUPPORT_DIR="${HOME}/Library/Application Support/anpr-edge-agent"
 
 cd "$INSTALL_DIR"
 
-if [[ -f "${SUPPORT_DIR}/.env" ]]; then
-  cp "${SUPPORT_DIR}/.env" ".env"
-elif [[ ! -f ".env" ]]; then
+if [[ ! -f "${SUPPORT_DIR}/.env" ]]; then
   if [[ -x "${INSTALL_DIR}/scripts/choose-site.sh" ]]; then
   ANPR_SITE_PROFILE="${ANPR_SITE_PROFILE:-}" "${INSTALL_DIR}/scripts/choose-site.sh" || true
   fi
@@ -17,6 +15,11 @@ elif [[ ! -f ".env" ]]; then
     mkdir -p "${SUPPORT_DIR}"
     cp ".env" "${SUPPORT_DIR}/.env"
   fi
+fi
+
+if [[ ! -f "${SUPPORT_DIR}/.env" ]]; then
+  echo "Config missing: ${SUPPORT_DIR}/.env"
+  exit 1
 fi
 
 if [[ ! -d ".venv" ]]; then

@@ -116,9 +116,8 @@ def load_settings() -> Settings:
     """Load settings from the installed support .env when available."""
     import os
 
-    from src.config.env_sync import installed_support_env, sync_installed_env
+    from src.config.env_sync import installed_support_env
 
-    sync_installed_env()
     support = installed_support_env()
     if support is not None:
         for key in (
