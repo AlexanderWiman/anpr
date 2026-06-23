@@ -156,37 +156,53 @@ function renderUpdatePanel() {
   }
 
   const current = installInfo.currentVersion || "okänd";
-  const available = installInfo.availableVersion || "okänd";
+  const remote = installInfo.remoteVersion;
+  const hasRemote = installInfo.remoteUpdateAvailable;
+  const hasLocal = installInfo.localUpdateAvailable;
   const hasUpdate = installInfo.updateAvailable;
 
   panel.classList.remove("hidden");
+
+  if (!hasUpdate) {
+    panel.innerHTML = `
+      <h2>ANPR är installerat</h2>
+      <p>Version <strong>${current}</strong> — allt är uppdaterat.</p>
+      <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden nedan.</p>
+    `;
+    return;
+  }
+
+  const remoteLine = remote
+    ? `Ny version tillgänglig: <strong>${remote}</strong> (du har ${current})`
+    : "En nyare version finns tillgänglig.";
+
   panel.innerHTML = `
-    <h2>${hasUpdate ? "Uppdatering tillgänglig" : "ANPR är redan installerat"}</h2>
-    <p>
-      Installerad version: <strong>${current}</strong><br>
-      Version i det här paketet: <strong>${available}</strong>
-    </p>
-    <p>${hasUpdate
-      ? "Klicka nedan för att uppdatera. Kamera, token och övriga inställningar behålls."
-      : "Du har redan senaste versionen. Kör uppdatering ändå om IT bett dig installera om paketet."}
-    </p>
-    <button type="button" class="btn primary small" id="btn-update">Uppdatera nu</button>
+    <h2>Uppdatering tillgänglig</h2>
+    <p>${remoteLine}</p>
+    <p>Klicka nedan — programmet laddas ner och installeras automatiskt. Kamera, token och inställningar behålls.</p>
+    <div class="prereq-toolbar">
+      <button type="button" class="btn primary small" id="btn-update-remote">Uppdatera automatiskt</button>
+      ${hasLocal ? '<button type="button" class="btn ghost small" id="btn-update">Uppdatera från den här mappen</button>' : ""}
+    </div>
     <p class="update-progress hidden" id="update-progress"></p>
   `;
 
-  $("btn-update")?.addEventListener("click", startUpdate);
+  $("btn-update-remote")?.addEventListener("click", () => startUpdate("/api/update/remote"));
+  $("btn-update")?.addEventListener("click", () => startUpdate("/api/update"));
 }
 
-async function startUpdate() {
-  const btn = $("btn-update");
+async function startUpdate(url = "/api/update") {
+  const btnRemote = $("btn-update-remote");
+  const btnLocal = $("btn-update");
   const progress = $("update-progress");
-  if (btn) btn.disabled = true;
+  if (btnRemote) btnRemote.disabled = true;
+  if (btnLocal) btnLocal.disabled = true;
   if (progress) {
     progress.classList.remove("hidden");
-    progress.textContent = "Uppdaterar… Det kan ta några minuter.";
+    progress.textContent = "Uppdaterar… Det kan ta några minuter. Stäng inte fönstret.";
   }
 
-  await fetch("/api/update", { method: "POST" });
+  await fetch(url, { method: "POST" });
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     const res = await fetch("/api/install/status");
@@ -199,12 +215,14 @@ async function startUpdate() {
     pollTimer = null;
     if (data.status === "done") {
       await loadExistingInstall();
-      if (progress) progress.textContent = "Klart! ANPR har startats om med nya filer.";
-      if (btn) btn.disabled = false;
+      if (progress) progress.textContent = "Klart! ANPR har startats om.";
+      if (btnRemote) btnRemote.disabled = false;
+      if (btnLocal) btnLocal.disabled = false;
     }
     if (data.status === "error") {
       alert("Fel: " + (data.error || data.message));
-      if (btn) btn.disabled = false;
+      if (btnRemote) btnRemote.disabled = false;
+      if (btnLocal) btnLocal.disabled = false;
     }
   }, 800);
 }

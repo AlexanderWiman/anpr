@@ -90,20 +90,30 @@ Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automa
 
 ## Uppdateringar
 
-**Uppdateringar hämtas inte automatiskt.** Varje dator har sin egen kopia i:
+**Personal behöver inte ladda ner ZIP eller förstå GitHub.**
 
-- Mac: `~/Applications/anpr-edge-agent`
-- Windows: `%LOCALAPPDATA%\anpr-edge-agent`
+När IT säger att det finns en uppdatering:
 
-När det finns en ny version:
+1. Dubbelklicka **Install ANPR** (samma som vid första installationen)
+2. Klicka **Uppdatera automatiskt**
 
-1. Ladda ner **ny ZIP** från GitHub och packa upp (ersätt gammal mapp eller lägg i ny)
-2. Dubbelklicka **Install ANPR** / **launch/Installer.cmd** igen
-3. På välkomststeget: klicka **Uppdatera nu**
+Klart. Programmet laddas ner från internet, installeras om och startar igen. **Kamera, token och inställningar behålls.**
 
-Kamera, token och övriga inställningar **behålls** — bara programfilerna och Python-paketen uppdateras.
+Om knappen inte syns är datorn redan uppdaterad.
 
-IT kan skicka ut ny ZIP till anläggningarna och be personal köra steg 2–3.
+### För IT
+
+**Två sätt att styra uppdateringar:**
+
+1. **GitHub (enklast nu när repot är publikt)** — agenten kollar `main` på `AlexanderWiman/anpr` automatiskt. Höj `__version__` i `src/__init__.py`, pusha till `main`, be personal uppdatera.
+2. **Backend (rekommenderat i produktion)** — sätt på Railway så ni bestämmer *när* anläggningarna ska uppdatera, inte vid varje push:
+   - `ANPR_AGENT_LATEST_VERSION=1.1.0`
+   - `ANPR_AGENT_DOWNLOAD_URL=https://github.com/AlexanderWiman/anpr/archive/refs/heads/main.zip`  
+     (eller en [GitHub Release](https://github.com/AlexanderWiman/anpr/releases)-ZIP)
+
+Be personal: **Install ANPR** → **Uppdatera automatiskt**
+
+Se även backend-dokumentationen `ANPR_EDGE_AGENT.md`.
 
 ---
 

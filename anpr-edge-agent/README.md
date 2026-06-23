@@ -14,4 +14,4 @@ Produktion använder alltid kameraström (`CAMERA_RTSP_URL`). Ingen dev-video el
 
 **Mac:** dubbelklicka **Install ANPR** · **Windows:** **launch/Installer.cmd**
 
-Uppdateringar hämtas inte automatiskt — se [docs/MANUAL_SV.md](docs/MANUAL_SV.md#uppdateringar).
+Uppdateringar: personal dubbelklickar **Install ANPR** → **Uppdatera automatiskt** — se [docs/MANUAL_SV.md](docs/MANUAL_SV.md#uppdateringar).

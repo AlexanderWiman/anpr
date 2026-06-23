@@ -304,19 +304,24 @@ def is_installed() -> bool:
 
 
 def install_status_payload() -> dict:
+    from installer.updater import remote_update_status
+
     installed = is_installed()
     target = install_dir()
     source = repo_root()
     current = read_version(target) if installed else None
     available = read_version(source)
+    local_update = bool(installed and available and (not current or current != available))
+    remote = remote_update_status(current) if installed else {}
+
     return {
         "installed": installed,
         "currentVersion": current,
         "availableVersion": available,
-        "updateAvailable": bool(
-            installed and available and (not current or current != available)
-        ),
+        "updateAvailable": local_update or remote.get("remoteUpdateAvailable", False),
+        "localUpdateAvailable": local_update,
         "installDir": str(target),
+        **remote,
     }
 
 

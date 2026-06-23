@@ -17,6 +17,7 @@ from installer.engine import (
     run_install,
     run_update,
 )
+from installer.updater import run_remote_update
 from installer.prerequisites import (
     install_all_missing,
     install_prerequisite,
@@ -204,6 +205,40 @@ async def api_install(body: InstallRequest):
                 _state["status"] = "error"
                 _state["error"] = str(exc)
                 _state["message"] = "Installation misslyckades"
+
+    threading.Thread(target=work, daemon=True).start()
+    return {"started": True}
+
+
+@app.post("/api/update/remote")
+async def api_update_remote():
+    with _lock:
+        if _state["status"] == "running":
+            raise HTTPException(409, "Uppdatering pågår redan")
+        if not install_status_payload()["installed"]:
+            raise HTTPException(400, "ANPR är inte installerat på den här datorn")
+
+    def work() -> None:
+        def log(msg: str) -> None:
+            with _lock:
+                _state["message"] = msg
+
+        with _lock:
+            _state["status"] = "running"
+            _state["message"] = "Hämtar uppdatering…"
+            _state["error"] = None
+            _state["mode"] = "update"
+
+        try:
+            run_remote_update(log)
+            with _lock:
+                _state["status"] = "done"
+                _state["message"] = "Uppdatering klar"
+        except Exception as exc:
+            with _lock:
+                _state["status"] = "error"
+                _state["error"] = str(exc)
+                _state["message"] = "Uppdatering misslyckades"
 
     threading.Thread(target=work, daemon=True).start()
     return {"started": True}
