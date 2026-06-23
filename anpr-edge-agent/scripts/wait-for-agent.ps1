@@ -8,7 +8,6 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 $runScript = Join-Path $InstallDir "scripts\run-agent.cmd"
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-$restartAfter = (Get-Date).AddSeconds(25)
 
 function Test-AgentUp {
     try {
@@ -25,16 +24,6 @@ function Get-AgentProcess {
             $_.CommandLine -like "*anpr-edge-agent*" -and $_.CommandLine -like "*src.main*"
         } |
         Select-Object -First 1
-}
-
-function Stop-AgentProcess {
-    Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-        Where-Object {
-            $_.CommandLine -like "*anpr-edge-agent*" -and $_.CommandLine -like "*src.main*"
-        } |
-        ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        }
 }
 
 function Start-AgentProcess {
@@ -68,15 +57,7 @@ while ((Get-Date) -lt $deadline) {
         exit 0
     }
 
-    if ((Get-Date) -gt $restartAfter -and (Get-AgentProcess)) {
-        Write-Host "ANPR svarar inte — startar om..."
-        Stop-AgentProcess
-        Start-Sleep -Seconds 2
-        Start-AgentProcess
-        $restartAfter = (Get-Date).AddSeconds(90)
-    }
-
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 1
 }
 
 $logFile = Join-Path $InstallDir "data\logs\agent-startup.log"

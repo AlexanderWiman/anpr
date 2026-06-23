@@ -1,8 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-
-import cv2
+from typing import Any
 
 from src.camera.frame_io import frame_filename, save_frame
 
@@ -22,7 +21,7 @@ class RTSPCaptureService(FrameCaptureService):
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._capture: cv2.VideoCapture | None = None
+        self._capture: Any = None
         self._status = CameraStatus.DISCONNECTED
         self._last_frame_at: datetime | None = None
         self._frames_captured = 0
@@ -44,7 +43,9 @@ class RTSPCaptureService(FrameCaptureService):
     def frames_captured(self) -> int:
         return self._frames_captured
 
-    def _open_capture(self) -> cv2.VideoCapture:
+    def _open_capture(self) -> Any:
+        import cv2
+
         url = self._settings.camera_rtsp_url
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)

@@ -1,9 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 import tempfile
 from pathlib import Path
-
-import cv2
-import numpy as np
 
 from typing import TYPE_CHECKING
 
@@ -14,6 +13,7 @@ from src.utils.logging import get_logger
 from src.utils.plates import is_valid_swedish_plate, normalize_plate
 
 if TYPE_CHECKING:
+    import numpy as np
     from src.services.booking_hints import BookingHintService
 
 logger = get_logger(__name__)
@@ -96,6 +96,8 @@ class YoloOcrPlateProvider(PlateProvider):
         logger.info("YOLO+OCR models loaded", extra={"event": "models_loaded"})
 
     def _detect_sync(self, image_path: str) -> list[PlateDetection]:
+        import cv2
+
         self._ensure_models()
 
         image = cv2.imread(image_path)
@@ -271,6 +273,8 @@ class YoloOcrPlateProvider(PlateProvider):
         return yolo_conf >= 0.38 and combined >= 0.58
 
     def _run_ocr_once(self, crop: np.ndarray) -> tuple[str, float]:
+        import cv2
+
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp_path = tmp.name
 
@@ -297,6 +301,8 @@ class YoloOcrPlateProvider(PlateProvider):
 
     @staticmethod
     def _ocr_variants(crop: np.ndarray) -> list[np.ndarray]:
+        import cv2
+
         h, w = crop.shape[:2]
         scale = max(2.0, 200 / max(w, 1))
         upscaled = cv2.resize(
@@ -306,6 +312,8 @@ class YoloOcrPlateProvider(PlateProvider):
 
     @staticmethod
     def _apply_clahe(crop: np.ndarray) -> np.ndarray:
+        import cv2
+
         lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
         l_channel, a, b = cv2.split(lab)
         l_channel = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_channel)
@@ -340,6 +348,8 @@ class YoloOcrPlateProvider(PlateProvider):
 
     @staticmethod
     def _resize(image: np.ndarray, max_width: int = 1280) -> np.ndarray:
+        import cv2
+
         h, w = image.shape[:2]
         if w <= max_width:
             return image

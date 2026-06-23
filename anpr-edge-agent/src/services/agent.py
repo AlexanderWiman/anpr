@@ -263,25 +263,29 @@ class AnprAgent:
             else self.settings.health_host
         )
         logger.info(
-            "web dashboard available",
+            "web dashboard starting",
             extra={
-                "event": "web_ui_started",
+                "event": "web_ui_starting",
                 "url": f"http://{display_host}:{self.settings.health_port}",
             },
         )
 
-        await self._run_frame_cleanup_once()
-        self._cleanup_task = asyncio.create_task(
-            self._frame_cleanup_loop(), name="frame-cleanup"
-        )
-        self.booking_hints.start_background_refresh()
+        async def _background_init() -> None:
+            await self._run_frame_cleanup_once()
+            self._cleanup_task = asyncio.create_task(
+                self._frame_cleanup_loop(), name="frame-cleanup"
+            )
+            self.booking_hints.start_background_refresh()
+            if self.settings.agent_auto_start:
+                await self.controller.start()
 
-        if self.settings.agent_auto_start:
-            await self.controller.start()
+        init_task = asyncio.create_task(_background_init(), name="agent-background-init")
 
         try:
             await server.serve()
         finally:
+            init_task.cancel()
+            await asyncio.gather(init_task, return_exceptions=True)
             if self._cleanup_task is not None:
                 self._cleanup_task.cancel()
                 await asyncio.gather(self._cleanup_task, return_exceptions=True)
