@@ -218,6 +218,7 @@ def run_remote_update(log: Callable[[str], None]) -> None:
         setup_python_env,
         start_agent,
         copy_application,
+        create_dashboard_shortcut,
     )
 
     if not is_installed():
@@ -235,6 +236,7 @@ def run_remote_update(log: Callable[[str], None]) -> None:
         log("Uppdaterar Python-paket…")
         setup_python_env(target, log)
         install_autostart(target, log)
+        create_dashboard_shortcut(log)
         start_agent(target, log)
         remote = status.get("remoteVersion") or "ny"
         log(f"Uppdatering klar (version {remote}). Kamera och token är oförändrade.")

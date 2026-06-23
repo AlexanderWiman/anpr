@@ -608,6 +608,7 @@ def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None
     log("Uppdaterar Python-paket...")
     setup_python_env(target, log)
     install_autostart(target, log)
+    create_dashboard_shortcut(log)
     start_agent(target, log)
     log("Uppdatering klar — kamera och token är oförändrade.")
     if open_browser:
