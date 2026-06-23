@@ -22,7 +22,6 @@ def _settings() -> Settings:
 
 def test_check_backend_ok():
     client = BackendClient(_settings())
-    health = httpx.Response(200, request=httpx.Request("GET", "https://backend.example.com/health"))
     plates = httpx.Response(
         200,
         request=httpx.Request(
@@ -30,7 +29,7 @@ def test_check_backend_ok():
             "https://backend.example.com/api/anpr/sites/falun/expected-plates",
         ),
     )
-    client._client.get = AsyncMock(side_effect=[health, plates])  # noqa: SLF001
+    client._client.get = AsyncMock(return_value=plates)  # noqa: SLF001
 
     status = asyncio.run(client.check_backend())
 
@@ -40,7 +39,6 @@ def test_check_backend_ok():
 
 def test_check_backend_invalid_token():
     client = BackendClient(_settings())
-    health = httpx.Response(200, request=httpx.Request("GET", "https://backend.example.com/health"))
     plates = httpx.Response(
         403,
         request=httpx.Request(
@@ -48,7 +46,7 @@ def test_check_backend_invalid_token():
             "https://backend.example.com/api/anpr/sites/falun/expected-plates",
         ),
     )
-    client._client.get = AsyncMock(side_effect=[health, plates])  # noqa: SLF001
+    client._client.get = AsyncMock(return_value=plates)  # noqa: SLF001
 
     status = asyncio.run(client.check_backend())
 
@@ -64,3 +62,4 @@ def test_check_backend_unreachable():
 
     assert status.ok is False
     assert status.code == "down"
+    assert "Kan inte ansluta" in status.detail

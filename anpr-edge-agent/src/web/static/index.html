@@ -376,10 +376,12 @@
         };
 
         const be = status.backend;
-        const beLabel = backendLabels[be.code] || backendLabels.down;
+        const beLabel =
+          (be.code && backendLabels[be.code]) ||
+          (be.reachable ? backendLabels.ok : backendLabels.down);
         document.getElementById('backend-status').textContent = beLabel.text;
         document.getElementById('backend-status').style.color = beLabel.color;
-        document.getElementById('backend-detail').textContent = be.detail || be.url;
+        document.getElementById('backend-detail').textContent = be.detail || be.url || '—';
 
         document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;
         document.getElementById('failed-count').textContent =

@@ -129,6 +129,11 @@ def read_installed_config() -> dict | None:
 
 
 def render_env(cfg: InstallConfig) -> str:
+    def env_value(value: str) -> str:
+        if any(ch in value for ch in (' ', '=', '#', '"', "'")):
+            return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return value
+
     camera_url = build_camera_url(cfg)
     storage = support_dir() / "storage"
     logs = support_dir() / "logs"
@@ -141,7 +146,7 @@ def render_env(cfg: InstallConfig) -> str:
         f"CAMERA_RTSP_URL={camera_url}",
         "",
         f"BACKEND_URL={cfg.backend_url.rstrip('/')}",
-        f"ANPR_AGENT_TOKEN={cfg.anpr_token}",
+        f"ANPR_AGENT_TOKEN={env_value(cfg.anpr_token)}",
         "",
         "BOOKING_HINTS_ENABLED=true",
         "BOOKING_HINTS_REFRESH_SECONDS=600",

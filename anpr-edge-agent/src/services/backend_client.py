@@ -1,4 +1,5 @@
 import httpx
+import certifi
 
 from src import __version__
 from src.config.settings import Settings
@@ -29,6 +30,8 @@ class BackendClient:
         self._settings = settings
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.backend_timeout_seconds),
+            verify=certifi.where(),
+            trust_env=True,
             headers={
                 "Authorization": f"Bearer {settings.anpr_agent_token}",
                 "Content-Type": "application/json",
@@ -40,25 +43,23 @@ class BackendClient:
         await self._client.aclose()
 
     async def check_backend(self) -> BackendStatus:
-        """Verify backend is reachable and the configured token is accepted."""
+        """Verify backend accepts our token (authenticated API call)."""
         base = self._settings.backend_url.rstrip("/")
+        url = self._settings.backend_expected_plates_url
 
         try:
-            response = await self._client.get(f"{base}/health")
-            if response.status_code >= 500:
-                return BackendStatus(False, "down", "Backend svarar inte")
-        except httpx.HTTPError:
-            return BackendStatus(False, "down", "Kan inte nå backend — kontrollera internet")
-
-        try:
-            response = await self._client.get(self._settings.backend_expected_plates_url)
+            response = await self._client.get(url)
+        except httpx.TimeoutException:
+            return BackendStatus(False, "down", "Timeout mot backend — kontrollera internet")
+        except httpx.ConnectError as exc:
+            return BackendStatus(False, "down", f"Kan inte ansluta till backend: {exc}")
         except httpx.HTTPError as exc:
-            return BackendStatus(False, "down", f"Kan inte nå backend: {exc}")
+            return BackendStatus(False, "down", f"Nätverksfel mot backend: {exc}")
 
         if response.status_code == 200:
             return BackendStatus(True, "ok", base)
         if response.status_code in (401, 403):
-            return BackendStatus(False, "invalid_token", "Token ogiltig — kontakta IT")
+            return BackendStatus(False, "invalid_token", "Token ogiltig — kontrollera med IT")
         if response.status_code == 422:
             return BackendStatus(
                 False,
@@ -67,11 +68,17 @@ class BackendClient:
             )
         if response.status_code == 503:
             return BackendStatus(False, "misconfigured", "Backend är inte konfigurerad för ANPR")
+        if response.status_code == 404:
+            return BackendStatus(
+                False,
+                "down",
+                "Backend saknar ANPR-endpoint — kontakta IT (uppdatera backend)",
+            )
 
         return BackendStatus(
             False,
             "down",
-            f"Backend svarade med oväntat fel ({response.status_code})",
+            f"Backend svarade med fel {response.status_code}",
         )
 
     async def healthcheck(self) -> bool:

@@ -292,6 +292,9 @@ class AnprAgent:
 
 
 async def main() -> None:
+    from src.config.env_sync import sync_installed_env
+
+    sync_installed_env()
     settings = Settings()
     setup_logging(settings.log_dir, settings.log_level)
     agent = AnprAgent(settings)
