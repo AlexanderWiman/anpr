@@ -174,9 +174,124 @@ def render_env(cfg: InstallConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _run(cmd: list[str], cwd: Path, log: Callable[[str], None]) -> None:
+def _run(cmd: list[str], cwd: Path, log: Callable[[str], None], *, optional: bool = False) -> None:
     log(f"Kör: {' '.join(cmd)}")
-    subprocess.run(cmd, cwd=cwd, check=True)
+    flags = 0
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        flags = subprocess.CREATE_NO_WINDOW
+    proc = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        creationflags=flags,
+    )
+    if proc.returncode == 0:
+        return
+    detail = (proc.stderr or proc.stdout or "").strip()
+    if optional:
+        if detail:
+            log(f"Varning: {detail[:500]}")
+        return
+    message = "Kommandot misslyckades"
+    if detail:
+        message = f"{message}: {detail[:800]}"
+    raise RuntimeError(message)
+
+
+def _venv_python(app_dir: Path) -> Path:
+    if sys.platform == "win32":
+        return app_dir / ".venv" / "Scripts" / "python.exe"
+    return app_dir / ".venv" / "bin" / "python"
+
+
+def _venv_is_usable(app_dir: Path) -> bool:
+    py = _venv_python(app_dir)
+    if not py.is_file():
+        return False
+    flags = 0
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        flags = subprocess.CREATE_NO_WINDOW
+    try:
+        proc = subprocess.run(
+            [str(py), "-c", "import sys"],
+            cwd=app_dir,
+            capture_output=True,
+            timeout=30,
+            creationflags=flags,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _resolve_installer_python() -> str:
+    if sys.platform == "win32":
+        from installer.prerequisites import find_python_executable
+
+        found = find_python_executable()
+        if found:
+            return found
+    return sys.executable
+
+
+def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
+    venv = app_dir / ".venv"
+    python = _resolve_installer_python()
+
+    if venv.exists() and not _venv_is_usable(app_dir):
+        log("Rensar trasig Python-miljö...")
+        shutil.rmtree(venv, ignore_errors=True)
+
+    if not venv.exists():
+        log("Skapar Python-miljö...")
+        _run([python, "-m", "venv", str(venv)], app_dir, log)
+
+    py = _venv_python(app_dir)
+    if not py.is_file():
+        raise RuntimeError(f"Python-miljön skapades inte korrekt: {py}")
+
+    log("Installerar paket (kan ta några minuter)...")
+    _run(
+        [str(py), "-m", "pip", "install", "-q", "--disable-pip-version-check", "--upgrade", "pip"],
+        app_dir,
+        log,
+        optional=True,
+    )
+    _run(
+        [
+            str(py),
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--disable-pip-version-check",
+            "-r",
+            "requirements.txt",
+            "-r",
+            "requirements-ai.txt",
+            "-r",
+            "requirements-ocr.txt",
+        ],
+        app_dir,
+        log,
+    )
+
+    model = app_dir / "models" / "plate_yolov8.pt"
+    if not model.exists():
+        log("Laddar ner ANPR-modell...")
+        if sys.platform == "win32":
+            url = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
+            model.parent.mkdir(parents=True, exist_ok=True)
+            import urllib.request
+
+            urllib.request.urlretrieve(url, model)
+        else:
+            script = app_dir / "scripts" / "download-yolo-model.sh"
+            if script.exists():
+                _run(["bash", str(script)], app_dir, log)
+
+    return py
 
 
 def copy_application(source: Path, target: Path, log: Callable[[str], None]) -> None:
@@ -205,46 +320,6 @@ def copy_application(source: Path, target: Path, log: Callable[[str], None]) -> 
             )
         else:
             shutil.copy2(item, dest)
-
-
-def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
-    venv = app_dir / ".venv"
-    python = sys.executable
-
-    if not venv.exists():
-        log("Skapar Python-miljö...")
-        _run([python, "-m", "venv", str(venv)], app_dir, log)
-
-    if sys.platform == "win32":
-        pip = venv / "Scripts" / "pip.exe"
-        py = venv / "Scripts" / "python.exe"
-    else:
-        pip = venv / "bin" / "pip"
-        py = venv / "bin" / "python"
-
-    log("Installerar paket (kan ta några minuter)...")
-    _run([str(pip), "install", "-q", "--upgrade", "pip"], app_dir, log)
-    _run(
-        [str(pip), "install", "-q", "-r", "requirements.txt", "-r", "requirements-ai.txt", "-r", "requirements-ocr.txt"],
-        app_dir,
-        log,
-    )
-
-    model = app_dir / "models" / "plate_yolov8.pt"
-    if not model.exists():
-        log("Laddar ner ANPR-modell...")
-        if sys.platform == "win32":
-            url = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
-            model.parent.mkdir(parents=True, exist_ok=True)
-            import urllib.request
-
-            urllib.request.urlretrieve(url, model)
-        else:
-            script = app_dir / "scripts" / "download-yolo-model.sh"
-            if script.exists():
-                _run(["bash", str(script)], app_dir, log)
-
-    return py
 
 
 def write_config(cfg: InstallConfig, log: Callable[[str], None]) -> Path:

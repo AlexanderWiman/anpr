@@ -78,6 +78,7 @@ Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automa
 |---------|--------|
 | Python eller ffmpeg saknas | Använd **Installera automatiskt** i guiden, eller **launch/Install-Prerequisites.cmd** / **scripts/install-prerequisites.sh** |
 | Windows: «Python hittades inte» / Microsoft Store | Kör **launch/Installer.cmd** igen (ny version ignorerar Store-alias). Eller stäng av **python.exe** under Inställningar → Appar → Avancerade appinställningar → **Appkörningsalias** |
+| Windows: pip / paketinstallation misslyckas | Stäng guiden, radera mappen `%LOCALAPPDATA%\anpr-edge-agent\.venv` och kör **Installer.cmd** igen |
 | Kamera röd | Kontrollera IP och inloggning (Tapo: Camera Account i appen) |
 | Backend röd | Kontrollera internet och token med IT |
 | Inga skyltar | Kameravinkel, belysning |

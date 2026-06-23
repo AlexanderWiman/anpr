@@ -28,3 +28,15 @@ def test_get_prerequisite_status_reports_python_on_unix():
         return
     items = {item.id: item for item in prereq.get_prerequisite_status()}
     assert items["python"].ok
+
+
+def test_run_optional_does_not_raise(tmp_path):
+    from installer.engine import _run
+
+    log_messages: list[str] = []
+
+    def log(msg: str) -> None:
+        log_messages.append(msg)
+
+    _run(["false"], tmp_path, log, optional=True)
+    assert log_messages
