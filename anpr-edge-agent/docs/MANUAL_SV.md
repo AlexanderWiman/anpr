@@ -81,6 +81,7 @@ Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automa
 | Windows: pip / paketinstallation misslyckas | Stäng guiden, radera mappen `%LOCALAPPDATA%\anpr-edge-agent\.venv` och kör **Installer.cmd** igen |
 | Kamera röd | Kontrollera IP och inloggning (Tapo: Camera Account i appen) |
 | Backend röd / «Fel token» | Kontrollera token med IT och spara om via **Install ANPR** → guiden |
+| 127.0.0.1 nekade anslutning | Agenten körs inte. Kör `%LOCALAPPDATA%\anpr-edge-agent\scripts\run-agent.cmd` (lämna fönstret öppet) |
 | Inga skyltar | Kameravinkel, belysning |
 
 **Loggar (IT):**
