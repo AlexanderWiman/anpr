@@ -150,6 +150,7 @@
     .plate { font-family: Consolas, monospace; font-weight: 700; letter-spacing: 0.08em; }
     .empty { padding: 2rem; text-align: center; color: var(--muted); }
     footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 1rem; }
+    .config-path { display: block; margin-top: 0.35rem; font-size: 0.7rem; word-break: break-all; }
     button.small {
       background: var(--accent);
       color: white;
@@ -245,7 +246,11 @@
     </section>
   </main>
 
-  <footer>ANPR Edge Agent <span id="agent-version">v…</span> · <span id="poll-info">localhost:8080</span></footer>
+  <footer>
+    ANPR Edge Agent <span id="agent-version">v…</span>
+    · <span id="poll-info">localhost:8080</span>
+    <span id="config-path" class="config-path"></span>
+  </footer>
 
   <script>
     const agentLabels = {
@@ -411,6 +416,9 @@
             `${be.detail || 'Token ogiltig'} · aktiv token slutar på …${be.tokenHint || '????'}`;
         } else {
           document.getElementById('backend-detail').textContent = be.detail || be.url || '—';
+        }
+        if (be.configPath) {
+          document.getElementById('config-path').textContent = `Config: ${be.configPath}`;
         }
 
         document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;

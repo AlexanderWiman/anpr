@@ -24,6 +24,9 @@ def _dashboard_html() -> HTMLResponse:
 
 def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
     settings = agent.settings
+    from src.config.settings import settings_env_path
+
+    config_path = settings_env_path()
     app = FastAPI(title="ANPR Edge Agent", version=__version__)
 
     def build_status() -> dict:
@@ -59,6 +62,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             "backend": {
                 "url": settings.backend_url,
                 "tokenHint": settings.anpr_agent_token[-4:] if len(settings.anpr_agent_token) >= 4 else "????",
+                "configPath": config_path,
                 **delivery.backend_status.as_dict(),
             },
             "bookingHints": agent.booking_hints.status(),

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -77,6 +77,18 @@ class Settings(BaseSettings):
         object.__setattr__(self, "backend_url", url)
         return self
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Installed .env must beat stale Windows user/system environment variables.
+        return init_settings, env_settings, dotenv_settings, file_secret_settings
+
     @property
     def frames_dir(self) -> Path:
         return self.storage_dir / "frames"
@@ -102,13 +114,36 @@ class Settings(BaseSettings):
 
 def load_settings() -> Settings:
     """Load settings from the installed support .env when available."""
+    import os
+
     from src.config.env_sync import installed_support_env, sync_installed_env
 
     sync_installed_env()
     support = installed_support_env()
     if support is not None:
+        for key in (
+            "ANPR_AGENT_TOKEN",
+            "BACKEND_URL",
+            "SITE_ID",
+            "CAMERA_RTSP_URL",
+            "CAMERA_ID",
+            "DIRECTION",
+        ):
+            os.environ.pop(key, None)
         return Settings(_env_file=str(support))
     return Settings()
+
+
+def settings_env_path() -> str | None:
+    from pathlib import Path
+
+    from src.config.env_sync import installed_support_env
+
+    support = installed_support_env()
+    if support is not None:
+        return str(support)
+    local = Path(".env")
+    return str(local.resolve()) if local.is_file() else None
 
 
 @lru_cache
