@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     motion_scan_interval_ms: int = Field(default=5000, alias="MOTION_SCAN_INTERVAL_MS")
     rtsp_connect_timeout_ms: int = Field(default=10000, alias="RTSP_CONNECT_TIMEOUT_MS")
     rtsp_reconnect_delay_ms: int = Field(default=5000, alias="RTSP_RECONNECT_DELAY_MS")
+    rtsp_transport: str = Field(default="tcp", alias="RTSP_TRANSPORT")
 
     # Backend
     backend_url: str = Field(alias="BACKEND_URL")

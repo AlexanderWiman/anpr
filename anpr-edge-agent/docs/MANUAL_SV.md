@@ -93,7 +93,7 @@ Ignorera `%LOCALAPPDATA%\anpr-edge-agent\.env` om den finns (gammal kopia). Star
 | Python eller ffmpeg saknas | Använd **Installera automatiskt** i guiden, eller **launch/Install-Prerequisites.cmd** / **scripts/install-prerequisites.sh** |
 | Windows: «Python hittades inte» / Microsoft Store | Kör **launch/Installer.cmd** igen (ny version ignorerar Store-alias). Eller stäng av **python.exe** under Inställningar → Appar → Avancerade appinställningar → **Appkörningsalias** |
 | Windows: pip / paketinstallation misslyckas | Stäng guiden, radera mappen `%LOCALAPPDATA%\anpr-edge-agent\.venv` och kör **Installer.cmd** igen |
-| Kamera röd | Kontrollera IP och inloggning (Tapo: Camera Account i appen) |
+| Kamera röd / funkar i VLC men inte i ANPR | Kontrollera `CAMERA_RTSP_URL` i `data\.env` (samma som i VLC). Sätt `RTSP_TRANSPORT=tcp`. Klicka **Starta** i dashboarden. Kolla att **ffmpeg** är installerat (guiden → Installera automatiskt). Dashboarden visar inte livevideo — bara status **OK** och tid för senaste bild |
 | Backend röd / «Fel token» | Kontrollera token med IT och spara om via **Install ANPR** → guiden |
 | 127.0.0.1 nekade anslutning | Använd genvägen **ANPR** på skrivbordet (inte en gammal webbläsargenväg). Kör `%LOCALAPPDATA%\anpr-edge-agent\scripts\diagnose-windows.cmd` eller `run-agent.cmd` och lämna fönstret öppet. Logg: `data\logs\agent-startup.log` |
 | Inga skyltar | Kameravinkel, belysning |

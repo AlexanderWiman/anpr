@@ -44,9 +44,14 @@ class RTSPCaptureService(FrameCaptureService):
         return self._frames_captured
 
     def _open_capture(self) -> Any:
+        import os
+
         import cv2
 
         url = self._settings.camera_rtsp_url
+        transport = (self._settings.rtsp_transport or "tcp").strip().lower()
+        if transport in ("tcp", "udp"):
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = f"rtsp_transport;{transport}"
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return cap
