@@ -3,6 +3,7 @@ REM Wrapper to start ANPR Edge Agent on Windows (user install).
 setlocal
 cd /d "%~dp0.."
 set "INSTALL=%CD%"
+set "SCRIPTS=%~dp0"
 set "LOGDIR=%LOCALAPPDATA%\anpr-edge-agent\data\logs"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>&1
 set "LOGFILE=%LOGDIR%\agent-startup.log"
@@ -26,8 +27,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 REM Already serving — nothing to do.
-powershell -NoProfile -Command ^
-  "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/version' -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch {}; exit 1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPTS%test-agent-up.ps1"
 if not errorlevel 1 (
     >>"%LOGFILE%" echo Agent already running on port 8080
     exit /b 0
@@ -35,8 +35,7 @@ if not errorlevel 1 (
 
 REM Stop stale ANPR python processes that are not serving the dashboard.
 >>"%LOGFILE%" echo Stopping stale ANPR processes...
-powershell -NoProfile -Command ^
-  "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*anpr-edge-agent*' -and $_.CommandLine -like '*src.main*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPTS%stop-stale-agent.ps1" >nul 2>&1
 
 set PYTHONUNBUFFERED=1
 set PYTHONPATH=%CD%
