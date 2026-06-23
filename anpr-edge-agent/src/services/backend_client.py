@@ -1,5 +1,6 @@
 import httpx
 
+from src import __version__
 from src.config.settings import Settings
 from src.models.event import AnprEvent
 from src.utils.logging import get_logger
@@ -17,7 +18,7 @@ class BackendClient:
             headers={
                 "Authorization": f"Bearer {settings.anpr_agent_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "anpr-edge-agent/0.1.0",
+                "User-Agent": f"anpr-edge-agent/{__version__}",
             },
         )
 

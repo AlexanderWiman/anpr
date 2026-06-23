@@ -346,6 +346,37 @@ h1 {
   margin-bottom: 12px;
 }
 
+.update-panel {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius);
+  padding: 16px;
+  max-width: 520px;
+  margin-bottom: 20px;
+}
+
+.update-panel h2 {
+  font-size: 1rem;
+  margin-bottom: 6px;
+}
+
+.update-panel p {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+
+.update-panel .btn {
+  margin-top: 4px;
+}
+
+.update-progress {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
 .summary {
   background: var(--bg);
   border-radius: var(--radius);

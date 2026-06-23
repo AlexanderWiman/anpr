@@ -19,6 +19,7 @@ let defaultBackend = "";
 let pollTimer = null;
 let prereqPollTimer = null;
 let prereqData = { ok: false, items: [] };
+let installInfo = { installed: false };
 
 const $ = (id) => document.getElementById(id);
 
@@ -138,6 +139,74 @@ function validateStep(n) {
     }
   }
   return true;
+}
+
+async function loadExistingInstall() {
+  const res = await fetch("/api/install/existing");
+  installInfo = await res.json();
+  renderUpdatePanel();
+}
+
+function renderUpdatePanel() {
+  const panel = $("update-panel");
+  if (!installInfo.installed) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+
+  const current = installInfo.currentVersion || "okänd";
+  const available = installInfo.availableVersion || "okänd";
+  const hasUpdate = installInfo.updateAvailable;
+
+  panel.classList.remove("hidden");
+  panel.innerHTML = `
+    <h2>${hasUpdate ? "Uppdatering tillgänglig" : "ANPR är redan installerat"}</h2>
+    <p>
+      Installerad version: <strong>${current}</strong><br>
+      Version i det här paketet: <strong>${available}</strong>
+    </p>
+    <p>${hasUpdate
+      ? "Klicka nedan för att uppdatera. Kamera, token och övriga inställningar behålls."
+      : "Du har redan senaste versionen. Kör uppdatering ändå om IT bett dig installera om paketet."}
+    </p>
+    <button type="button" class="btn primary small" id="btn-update">Uppdatera nu</button>
+    <p class="update-progress hidden" id="update-progress"></p>
+  `;
+
+  $("btn-update")?.addEventListener("click", startUpdate);
+}
+
+async function startUpdate() {
+  const btn = $("btn-update");
+  const progress = $("update-progress");
+  if (btn) btn.disabled = true;
+  if (progress) {
+    progress.classList.remove("hidden");
+    progress.textContent = "Uppdaterar… Det kan ta några minuter.";
+  }
+
+  await fetch("/api/update", { method: "POST" });
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    const res = await fetch("/api/install/status");
+    const data = await res.json();
+    if (progress) progress.textContent = data.message || "Arbetar…";
+
+    if (data.status === "running") return;
+
+    clearInterval(pollTimer);
+    pollTimer = null;
+    if (data.status === "done") {
+      await loadExistingInstall();
+      if (progress) progress.textContent = "Klart! ANPR har startats om med nya filer.";
+      if (btn) btn.disabled = false;
+    }
+    if (data.status === "error") {
+      alert("Fel: " + (data.error || data.message));
+      if (btn) btn.disabled = false;
+    }
+  }, 800);
 }
 
 async function loadPrereqs() {
@@ -337,5 +406,6 @@ document.querySelectorAll('input[name="cam-type"]').forEach((el) => {
 buildNav();
 setStep(0);
 loadPrereqs();
+loadExistingInstall();
 loadSites();
 updateCameraUi();

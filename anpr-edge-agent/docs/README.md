@@ -23,10 +23,15 @@
 | **deploy/** | Konfigurationsfiler för systemd, LaunchAgent m.m. |
 | **tests/** | Tester |
 
-## Utvecklare
+## Utvecklare / IT (manuell körning)
 
 ```bash
-./scripts/setup.sh && ./scripts/start.sh
+cp sites/falun.env.example sites/falun.env   # sätt CAMERA_RTSP_URL
+./scripts/setup.sh
+./scripts/choose-site.sh                     # skapar .env med RTSP
+./scripts/start.sh
 ```
 
-Se [DEPLOY.md](DEPLOY.md) för avancerad installation.
+Testa backend-API: `./scripts/send-test-event.sh DMY009`
+
+Se [DEPLOY.md](DEPLOY.md) för systemd / Windows-tjänst.

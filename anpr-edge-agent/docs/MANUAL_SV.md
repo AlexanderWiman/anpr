@@ -88,6 +88,25 @@ Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automa
 
 ---
 
+## Uppdateringar
+
+**Uppdateringar hämtas inte automatiskt.** Varje dator har sin egen kopia i:
+
+- Mac: `~/Applications/anpr-edge-agent`
+- Windows: `%LOCALAPPDATA%\anpr-edge-agent`
+
+När det finns en ny version:
+
+1. Ladda ner **ny ZIP** från GitHub och packa upp (ersätt gammal mapp eller lägg i ny)
+2. Dubbelklicka **Install ANPR** / **launch/Installer.cmd** igen
+3. På välkomststeget: klicka **Uppdatera nu**
+
+Kamera, token och övriga inställningar **behålls** — bara programfilerna och Python-paketen uppdateras.
+
+IT kan skicka ut ny ZIP till anläggningarna och be personal köra steg 2–3.
+
+---
+
 ## Avancerat (IT)
 
 Se [DEPLOY.md](DEPLOY.md) för manuell installation (systemd, Windows-tjänst, macOS LaunchAgent).

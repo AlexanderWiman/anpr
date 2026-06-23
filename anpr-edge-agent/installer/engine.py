@@ -289,6 +289,55 @@ def start_agent(app_dir: Path, log: Callable[[str], None]) -> None:
         subprocess.Popen([str(py), "-m", "src.main"], cwd=app_dir)
 
 
+def read_version(app_dir: Path) -> str | None:
+    init_file = app_dir / "src" / "__init__.py"
+    if not init_file.exists():
+        return None
+    for line in init_file.read_text(encoding="utf-8").splitlines():
+        if line.startswith("__version__"):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+def is_installed() -> bool:
+    return (support_dir() / ".env").is_file() and (install_dir() / "src" / "main.py").is_file()
+
+
+def install_status_payload() -> dict:
+    installed = is_installed()
+    target = install_dir()
+    source = repo_root()
+    current = read_version(target) if installed else None
+    available = read_version(source)
+    return {
+        "installed": installed,
+        "currentVersion": current,
+        "availableVersion": available,
+        "updateAvailable": bool(
+            installed and available and (not current or current != available)
+        ),
+        "installDir": str(target),
+    }
+
+
+def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None:
+    if not is_installed():
+        raise RuntimeError("ANPR är inte installerat — kör en full installation först.")
+
+    target = install_dir()
+    source = repo_root()
+
+    log("Uppdaterar programfiler...")
+    copy_application(source, target, log)
+    log("Uppdaterar Python-paket...")
+    setup_python_env(target, log)
+    install_autostart(target, log)
+    start_agent(target, log)
+    log("Uppdatering klar — kamera och token är oförändrade.")
+    if open_browser:
+        webbrowser.open("http://127.0.0.1:8080")
+
+
 def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser: bool = True) -> None:
     source = repo_root()
     target = install_dir()

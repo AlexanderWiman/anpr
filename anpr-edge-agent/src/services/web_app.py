@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
+from src import __version__
+
 if TYPE_CHECKING:
     from src.services.agent import AnprAgent
 
@@ -13,7 +15,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
     settings = agent.settings
-    app = FastAPI(title="ANPR Edge Agent", version="0.1.0")
+    app = FastAPI(title="ANPR Edge Agent", version=__version__)
 
     def build_status() -> dict:
         now = datetime.now(timezone.utc)

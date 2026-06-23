@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field
 
 from installer.engine import (
     InstallConfig,
+    install_status_payload,
     run_install,
+    run_update,
 )
 from installer.prerequisites import (
     install_all_missing,
@@ -40,7 +42,7 @@ _lock = threading.Lock()
 class InstallRequest(BaseModel):
     site_id: str
     camera_ip: str
-    camera_type: str = "ip_webcam"
+    camera_type: str = "tapo"
     camera_port: int = 8080
     rtsp_path: str = "/stream1"
     rtsp_user: str = ""
@@ -151,6 +153,11 @@ async def api_prerequisites_job_status():
         }
 
 
+@app.get("/api/install/existing")
+async def api_install_existing():
+    return install_status_payload()
+
+
 @app.get("/api/install/status")
 async def api_install_status():
     with _lock:
@@ -197,6 +204,40 @@ async def api_install(body: InstallRequest):
                 _state["status"] = "error"
                 _state["error"] = str(exc)
                 _state["message"] = "Installation misslyckades"
+
+    threading.Thread(target=work, daemon=True).start()
+    return {"started": True}
+
+
+@app.post("/api/update")
+async def api_update():
+    with _lock:
+        if _state["status"] == "running":
+            raise HTTPException(409, "Uppdatering pågår redan")
+        if not install_status_payload()["installed"]:
+            raise HTTPException(400, "ANPR är inte installerat på den här datorn")
+
+    def work() -> None:
+        def log(msg: str) -> None:
+            with _lock:
+                _state["message"] = msg
+
+        with _lock:
+            _state["status"] = "running"
+            _state["message"] = "Startar uppdatering..."
+            _state["error"] = None
+            _state["mode"] = "update"
+
+        try:
+            run_update(log, open_browser=False)
+            with _lock:
+                _state["status"] = "done"
+                _state["message"] = "Uppdatering klar"
+        except Exception as exc:
+            with _lock:
+                _state["status"] = "error"
+                _state["error"] = str(exc)
+                _state["message"] = "Uppdatering misslyckades"
 
     threading.Thread(target=work, daemon=True).start()
     return {"started": True}
