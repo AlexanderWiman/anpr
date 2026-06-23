@@ -48,7 +48,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             },
             "backend": {
                 "url": settings.backend_url,
-                "reachable": delivery.backend_reachable,
+                **delivery.backend_status.as_dict(),
             },
             "bookingHints": agent.booking_hints.status(),
             "queue": {
@@ -72,6 +72,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
 
     @app.get("/api/status")
     async def api_status():
+        await agent.delivery.refresh_backend_status()
         return build_status()
 
     @app.get("/api/agent/status")
@@ -117,8 +118,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
 
     @app.post("/api/backend/ping")
     async def api_backend_ping():
-        reachable = await agent.backend.healthcheck()
-        agent.delivery._backend_reachable = reachable  # noqa: SLF001
-        return {"reachable": reachable}
+        status = await agent.delivery.refresh_backend_status()
+        return status.as_dict()
 
     return app

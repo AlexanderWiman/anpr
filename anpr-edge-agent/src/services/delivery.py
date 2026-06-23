@@ -6,7 +6,7 @@ import httpx
 from src.config.settings import Settings
 from src.models.event import AnprEvent, QueuedEvent
 from src.queue.event_queue import EventQueue
-from src.services.backend_client import BackendClient
+from src.services.backend_client import BackendClient, BackendStatus
 from src.services.event_history import EventHistory
 from src.utils.logging import get_logger
 
@@ -32,12 +32,23 @@ class DeliveryService:
         self._queue = queue
         self._history = event_history
         self._backend_reachable = False
+        self._backend_status = BackendStatus(False, "unknown", "Kontrollerar backend…")
         self._deliveries_succeeded = 0
         self._deliveries_failed = 0
 
     @property
     def backend_reachable(self) -> bool:
         return self._backend_reachable
+
+    @property
+    def backend_status(self) -> BackendStatus:
+        return self._backend_status
+
+    async def refresh_backend_status(self) -> BackendStatus:
+        status = await self._backend.check_backend()
+        self._backend_status = status
+        self._backend_reachable = status.ok
+        return status
 
     @property
     def queue_size(self) -> int:
@@ -144,9 +155,10 @@ class DeliveryService:
         """Background loop that retries queued events."""
         while True:
             try:
-                self._backend_reachable = await self._backend.healthcheck()
+                await self.refresh_backend_status()
             except Exception:
                 self._backend_reachable = False
+                self._backend_status = BackendStatus(False, "down", "Kan inte nå backend")
 
             ready = self._queue.get_ready_events()
             for queued in ready:

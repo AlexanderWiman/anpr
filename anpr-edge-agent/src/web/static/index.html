@@ -366,10 +366,20 @@
         document.getElementById('camera-detail').textContent =
           running ? `Senast ${fmtTime(status.camera.lastFrameAt)}` : 'Inte startad';
 
-        const beOk = status.backend.reachable;
-        document.getElementById('backend-status').textContent = beOk ? 'OK' : 'Nere';
-        document.getElementById('backend-status').style.color = beOk ? 'var(--green)' : 'var(--red)';
-        document.getElementById('backend-detail').textContent = status.backend.url;
+        const backendLabels = {
+          ok: { text: 'OK', color: 'var(--green)' },
+          invalid_token: { text: 'Fel token', color: 'var(--red)' },
+          invalid_site: { text: 'Fel anläggning', color: 'var(--yellow)' },
+          misconfigured: { text: 'Ej konfigurerad', color: 'var(--red)' },
+          down: { text: 'Nere', color: 'var(--red)' },
+          unknown: { text: 'Kontrollerar…', color: 'var(--muted)' },
+        };
+
+        const be = status.backend;
+        const beLabel = backendLabels[be.code] || backendLabels.down;
+        document.getElementById('backend-status').textContent = beLabel.text;
+        document.getElementById('backend-status').style.color = beLabel.color;
+        document.getElementById('backend-detail').textContent = be.detail || be.url;
 
         document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;
         document.getElementById('failed-count').textContent =
