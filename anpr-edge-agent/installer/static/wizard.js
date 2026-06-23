@@ -222,21 +222,30 @@ function renderUpdatePanel() {
   panel.classList.remove("hidden");
 
   if (!hasUpdate) {
-    const remoteLine = remote && remote !== current
+    let statusLine = `Installerad version <strong>${current}</strong> — ingen nyare version hittades.`;
+    if (installInfo.newerThanServer && remote) {
+      statusLine = `Installerad version <strong>${current}</strong> — du har nyare än servern (<strong>${remote}</strong>).`;
+    }
+    const remoteLine = remote && remote !== current && !installInfo.newerThanServer
       ? `<p class="hint">Servern anger senaste version <strong>${remote}</strong>.</p>`
       : "";
     panel.innerHTML = `
       <h2>ANPR är installerat</h2>
-      <p>Installerad version <strong>${current}</strong> — ingen nyare version hittades.</p>
+      <p>${statusLine}</p>
       ${remoteLine}
       <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden — dina nuvarande inställningar fylls i automatiskt.</p>
     `;
     return;
   }
 
-  const remoteLine = remote
-    ? `Ny version tillgänglig: <strong>${remote}</strong> (du har ${current})`
-    : "En nyare version finns tillgänglig.";
+  let remoteLine;
+  if (hasRemote && remote) {
+    remoteLine = `Ny version tillgänglig: <strong>${remote}</strong> (du har ${current})`;
+  } else if (hasLocal && installInfo.availableVersion) {
+    remoteLine = `Ny version i den här mappen: <strong>${installInfo.availableVersion}</strong> (du har ${current})`;
+  } else {
+    remoteLine = "En nyare version finns tillgänglig.";
+  }
 
   panel.innerHTML = `
     <h2>Uppdatering tillgänglig</h2>

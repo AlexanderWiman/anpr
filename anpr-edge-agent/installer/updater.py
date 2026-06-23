@@ -158,11 +158,17 @@ def remote_update_status(current_version: str | None) -> dict:
         }
 
     remote_version = backend_version or github_version
+    if backend_version and github_version:
+        best = github_version if is_newer(github_version, backend_version) else backend_version
+    else:
+        best = remote_version
     return {
-        "remoteVersion": remote_version,
+        "remoteVersion": best,
         "remoteUpdateAvailable": False,
         "updateSource": "backend" if backend_version else ("release" if release_version else "main"),
         "updateRepo": repo,
+        "backendVersion": backend_version,
+        "githubVersion": github_version,
     }
 
 

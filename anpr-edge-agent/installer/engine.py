@@ -638,15 +638,19 @@ def is_installed() -> bool:
 
 
 def install_status_payload() -> dict:
-    from installer.updater import remote_update_status
+    from installer.updater import is_newer, remote_update_status
 
     installed = is_installed()
     target = install_dir()
     source = repo_root()
     current = read_version(target) if installed else None
     available = read_version(source)
-    local_update = bool(installed and available and (not current or current != available))
+    local_update = bool(installed and available and is_newer(available, current))
     remote = remote_update_status(current) if installed else {}
+    remote_version = remote.get("remoteVersion")
+    newer_than_server = bool(
+        current and remote_version and is_newer(current, remote_version)
+    )
 
     payload: dict = {
         "installed": installed,
@@ -654,6 +658,7 @@ def install_status_payload() -> dict:
         "availableVersion": available,
         "updateAvailable": local_update or remote.get("remoteUpdateAvailable", False),
         "localUpdateAvailable": local_update,
+        "newerThanServer": newer_than_server,
         "installDir": str(target),
         **remote,
     }
