@@ -6,9 +6,9 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from src.services.remote_commands import handle_heartbeat_commands_async
 from src.services.remote_update import (
     clear_update_result,
-    handle_heartbeat_commands,
     load_pending_update_result,
 )
 from src.services.status_report import build_status_report
@@ -68,7 +68,7 @@ class HeartbeatService:
 
         commands = response.get("commands") if isinstance(response, dict) else None
         if isinstance(commands, list) and commands:
-            await asyncio.to_thread(handle_heartbeat_commands, commands)
+            await handle_heartbeat_commands_async(self._agent, commands)
 
         self._last_sent_at = datetime.now(timezone.utc)
         self._last_error = None

@@ -119,6 +119,11 @@ class Settings(BaseSettings):
         base = self.backend_url.rstrip("/")
         return f"{base}/api/anpr/sites/{self.site_id}/heartbeat"
 
+    @property
+    def backend_frame_capture_url(self) -> str:
+        base = self.backend_url.rstrip("/")
+        return f"{base}/api/anpr/sites/{self.site_id}/frame-captures"
+
 
 def load_settings() -> Settings:
     """Load settings from the installed support .env when available."""

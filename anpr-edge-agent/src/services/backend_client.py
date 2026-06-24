@@ -119,6 +119,37 @@ class BackendClient:
         )
         return result
 
+    async def upload_frame_capture(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        image_base64: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        captured_at: str | None = None,
+        error: str | None = None,
+    ) -> dict:
+        url = self._settings.backend_frame_capture_url
+        payload: dict = {
+            "requestId": request_id,
+            "status": status,
+        }
+        if captured_at:
+            payload["capturedAt"] = captured_at
+        if width is not None:
+            payload["width"] = width
+        if height is not None:
+            payload["height"] = height
+        if image_base64:
+            payload["imageBase64"] = image_base64
+        if error:
+            payload["error"] = error
+
+        response = await self._client.post(url, json=payload, timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+
     async def fetch_expected_plates(self) -> dict:
         """Fetch today's expected registration numbers for this site."""
         url = self._settings.backend_expected_plates_url

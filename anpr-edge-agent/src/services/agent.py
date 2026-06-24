@@ -72,6 +72,7 @@ class AnprAgent:
             else None
         )
         self._cleanup_task: asyncio.Task | None = None
+        self._frame_captures_in_flight: set[str] = set()
 
     def get_capture_interval_ms(self) -> int:
         settings = self.settings
@@ -92,6 +93,66 @@ class AnprAgent:
     @property
     def backend(self) -> BackendClient:
         return self._backend
+
+    async def perform_remote_frame_capture(self, request_id: str) -> None:
+        if request_id in self._frame_captures_in_flight:
+            return
+
+        self._frame_captures_in_flight.add(request_id)
+        try:
+            from datetime import datetime, timezone
+
+            from src.services.frame_capture import capture_rtsp_jpeg_base64
+
+            loop = asyncio.get_event_loop()
+            image_b64, width, height = await loop.run_in_executor(
+                None,
+                lambda: capture_rtsp_jpeg_base64(self.settings),
+            )
+            captured_at = datetime.now(timezone.utc).isoformat()
+            await self.backend.upload_frame_capture(
+                request_id,
+                status="completed",
+                image_base64=image_b64,
+                width=width,
+                height=height,
+                captured_at=captured_at,
+            )
+            logger.info(
+                "remote frame capture uploaded",
+                extra={
+                    "event": "frame_capture_uploaded",
+                    "request_id": request_id,
+                    "width": width,
+                    "height": height,
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "remote frame capture failed",
+                extra={
+                    "event": "frame_capture_failed",
+                    "request_id": request_id,
+                    "error": str(exc),
+                },
+            )
+            try:
+                await self.backend.upload_frame_capture(
+                    request_id,
+                    status="failed",
+                    error=str(exc),
+                )
+            except Exception as upload_exc:
+                logger.warning(
+                    "frame capture failure upload failed",
+                    extra={
+                        "event": "frame_capture_failed",
+                        "request_id": request_id,
+                        "error": str(upload_exc),
+                    },
+                )
+        finally:
+            self._frame_captures_in_flight.discard(request_id)
 
     async def process_frame(self, frame_path: Path) -> bool:
         """Run plate detection on a captured frame and deliver events."""

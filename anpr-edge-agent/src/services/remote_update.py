@@ -105,11 +105,11 @@ def spawn_remote_update(command: dict) -> None:
 
 
 def handle_heartbeat_commands(commands: list[dict] | None) -> None:
+    """Backward-compatible sync entry point for tests."""
     if not commands:
         return
-
     for command in commands:
-        if command.get("type") != "update":
-            continue
-        spawn_remote_update(command)
-        return
+        if command.get("type") == "update":
+            spawn_remote_update(command)
+            return
+
