@@ -55,6 +55,7 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             **delivery.backend_status.as_dict(),
         },
         "bookingHints": agent.booking_hints.status(),
+        "heartbeat": agent.heartbeat.status(),
         "queue": {
             "size": delivery.queue_size,
             **delivery.stats,

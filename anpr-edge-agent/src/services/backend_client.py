@@ -129,6 +129,25 @@ class BackendClient:
     async def send_heartbeat(self, payload: dict) -> dict:
         """Report agent/camera/backend health for remote monitoring."""
         url = self._settings.backend_heartbeat_url
-        response = await self._client.post(url, json=payload)
+
+        try:
+            response = await self._client.post(url, json=payload)
+        except httpx.TimeoutException:
+            raise httpx.HTTPError("Timeout vid heartbeat mot backend") from None
+        except httpx.ConnectError as exc:
+            raise httpx.HTTPError(f"Kan inte skicka heartbeat: {exc}") from exc
+
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code in (401, 403):
+            raise httpx.HTTPError("Heartbeat nekad — token ogiltig (kontrollera ANPR_AGENT_TOKEN)")
+        if response.status_code == 404:
+            raise httpx.HTTPError(
+                "Heartbeat-endpoint saknas — uppdatera agenten till v1.0.21+ och backend"
+            )
+        if response.status_code == 422:
+            body = response.text[:200]
+            raise httpx.HTTPError(f"Heartbeat avvisad — kontrollera SITE_ID: {body}")
+
         response.raise_for_status()
         return response.json()

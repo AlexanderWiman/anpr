@@ -208,6 +208,11 @@
         <div class="sub" id="backend-detail">—</div>
       </div>
       <div class="card">
+        <div class="label">Fjärrövervakning</div>
+        <div class="value" id="heartbeat-status">—</div>
+        <div class="sub" id="heartbeat-detail">Heartbeat till server</div>
+      </div>
+      <div class="card">
         <div class="label">Levererade</div>
         <div class="value" id="delivered-count">0</div>
         <div class="sub" id="failed-count">0 misslyckade</div>
@@ -425,6 +430,27 @@
         }
         if (be.configPath) {
           document.getElementById('config-path').textContent = `Config: ${be.configPath}`;
+        }
+
+        const hb = status.heartbeat || {};
+        const hbEl = document.getElementById('heartbeat-status');
+        const hbDetail = document.getElementById('heartbeat-detail');
+        if (!hb.enabled) {
+          hbEl.textContent = 'Av';
+          hbEl.style.color = 'var(--muted)';
+          hbDetail.textContent = 'HEARTBEAT_ENABLED=false';
+        } else if (hb.lastError) {
+          hbEl.textContent = 'Fel';
+          hbEl.style.color = 'var(--red)';
+          hbDetail.textContent = hb.lastError;
+        } else if (hb.lastSentAt) {
+          hbEl.textContent = 'OK';
+          hbEl.style.color = 'var(--green)';
+          hbDetail.textContent = `Senast ${fmtTime(hb.lastSentAt)} · var ${hb.intervalSeconds || 60}s`;
+        } else {
+          hbEl.textContent = 'Startar…';
+          hbEl.style.color = 'var(--yellow)';
+          hbDetail.textContent = 'Första signal skickas inom ~1 min';
         }
 
         document.getElementById('delivered-count').textContent = status.queue.deliveries_succeeded ?? 0;
