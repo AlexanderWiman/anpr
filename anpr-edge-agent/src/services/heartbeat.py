@@ -6,6 +6,11 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from src.services.remote_update import (
+    clear_update_result,
+    handle_heartbeat_commands,
+    load_pending_update_result,
+)
 from src.services.status_report import build_status_report
 from src.utils.logging import get_logger
 
@@ -35,7 +40,11 @@ class HeartbeatService:
         }
 
     def build_payload(self) -> dict:
-        return build_status_report(self._agent, self._process_started_at)
+        payload = build_status_report(self._agent, self._process_started_at)
+        update_result = load_pending_update_result()
+        if update_result:
+            payload["updateResult"] = update_result
+        return payload
 
     async def send_once(self) -> bool:
         if not self._agent.settings.heartbeat_enabled:
@@ -44,7 +53,7 @@ class HeartbeatService:
         await self._agent.delivery.refresh_backend_status()
         payload = self.build_payload()
         try:
-            await self._agent.backend.send_heartbeat(payload)
+            response = await self._agent.backend.send_heartbeat(payload)
         except Exception as exc:
             self._last_error = str(exc)
             logger.warning(
@@ -52,6 +61,14 @@ class HeartbeatService:
                 extra={"event": "heartbeat_failed", "error": str(exc)},
             )
             return False
+
+        update_result = payload.get("updateResult")
+        if update_result and update_result.get("status") in {"completed", "failed"}:
+            clear_update_result()
+
+        commands = response.get("commands") if isinstance(response, dict) else None
+        if isinstance(commands, list) and commands:
+            await asyncio.to_thread(handle_heartbeat_commands, commands)
 
         self._last_sent_at = datetime.now(timezone.utc)
         self._last_error = None
