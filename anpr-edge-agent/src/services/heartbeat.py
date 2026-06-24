@@ -41,6 +41,7 @@ class HeartbeatService:
         if not self._agent.settings.heartbeat_enabled:
             return False
 
+        await self._agent.delivery.refresh_backend_status()
         payload = self.build_payload()
         try:
             await self._agent.backend.send_heartbeat(payload)
