@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     booking_hints_refresh_seconds: int = Field(
         default=600, alias="BOOKING_HINTS_REFRESH_SECONDS"
     )
+    heartbeat_enabled: bool = Field(default=True, alias="HEARTBEAT_ENABLED")
+    heartbeat_interval_seconds: int = Field(default=60, alias="HEARTBEAT_INTERVAL_SECONDS")
 
     # YOLO + OCR
     min_confidence: float = Field(default=0.55, alias="MIN_CONFIDENCE")
@@ -111,6 +113,11 @@ class Settings(BaseSettings):
     def backend_expected_plates_url(self) -> str:
         base = self.backend_url.rstrip("/")
         return f"{base}/api/anpr/sites/{self.site_id}/expected-plates"
+
+    @property
+    def backend_heartbeat_url(self) -> str:
+        base = self.backend_url.rstrip("/")
+        return f"{base}/api/anpr/sites/{self.site_id}/heartbeat"
 
 
 def load_settings() -> Settings:

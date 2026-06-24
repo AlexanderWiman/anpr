@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from src import __version__
+from src.services.status_report import build_status_report
 
 if TYPE_CHECKING:
     from src.services.agent import AnprAgent
@@ -23,56 +24,10 @@ def _dashboard_html() -> HTMLResponse:
 
 
 def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
-    settings = agent.settings
-    from src.config.settings import settings_env_path
-
-    config_path = settings_env_path()
     app = FastAPI(title="ANPR Edge Agent", version=__version__)
 
     def build_status() -> dict:
-        now = datetime.now(timezone.utc)
-        agent_status = agent.controller.status()
-        camera = agent.camera
-        delivery = agent.delivery
-
-        return {
-            "status": "ok",
-            "version": __version__,
-            "agent": agent_status,
-            "site": {
-                "siteId": settings.site_id,
-                "cameraId": settings.camera_id,
-                "direction": settings.direction,
-            },
-            "camera": {
-                "source": camera.source_type,
-                "status": camera.status.value,
-                "lastFrameAt": (
-                    camera.last_frame_at.isoformat() if camera.last_frame_at else None
-                ),
-                "framesCaptured": camera.frames_captured,
-            },
-            "anpr": {
-                "provider": agent.provider_name,
-                "minConfidence": settings.min_confidence,
-                "cooldownSeconds": settings.plate_cooldown_seconds,
-                "ocrProcessing": agent._ocr_busy,
-                "pendingFrames": 1 if agent._pending_frame else 0,
-            },
-            "backend": {
-                "url": settings.backend_url,
-                "tokenHint": settings.anpr_agent_token[-4:] if len(settings.anpr_agent_token) >= 4 else "????",
-                "configPath": config_path,
-                **delivery.backend_status.as_dict(),
-            },
-            "bookingHints": agent.booking_hints.status(),
-            "queue": {
-                "size": delivery.queue_size,
-                **delivery.stats,
-            },
-            "lastDetection": agent.deduplicator.last_detection,
-            "uptimeSeconds": round((now - process_started_at).total_seconds(), 1),
-        }
+        return build_status_report(agent, process_started_at)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():

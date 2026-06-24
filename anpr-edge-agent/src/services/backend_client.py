@@ -125,3 +125,10 @@ class BackendClient:
         response = await self._client.get(url)
         response.raise_for_status()
         return response.json()
+
+    async def send_heartbeat(self, payload: dict) -> dict:
+        """Report agent/camera/backend health for remote monitoring."""
+        url = self._settings.backend_heartbeat_url
+        response = await self._client.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()

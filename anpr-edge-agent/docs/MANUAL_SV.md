@@ -105,6 +105,20 @@ Ignorera `%LOCALAPPDATA%\anpr-edge-agent\.env` om den finns (gammal kopia). Star
 
 ---
 
+## Fjärrövervakning (IT)
+
+Agenten skickar en **heartbeat** till backend var 60:e sekund (så fort programmet kör, även om läsning är stoppad). Därmed kan IT se om verkstadsdatorn, kameran och backend-länken fungerar — utan att logga in på platsdatorn.
+
+- **Railway HTTP Logs:** sök `borlange heartbeat` eller `@path:/api/anpr/sites/borlange/heartbeat` — en träff per minut ≈ datorn är igång.
+- **Staff-app (planerat):** statusruta på anläggningsdashboard när backend-endpointen är utbyggd (se `docs/BACKEND_HEARTBEAT.md`).
+
+Inställningar i `data\.env`:
+
+- `HEARTBEAT_ENABLED=true` (standard)
+- `HEARTBEAT_INTERVAL_SECONDS=60`
+
+---
+
 ## Uppdateringar
 
 **Personal behöver inte ladda ner ZIP eller förstå GitHub.**

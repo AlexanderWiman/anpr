@@ -17,6 +17,7 @@ from src.services.backend_client import BackendClient
 from src.services.booking_hints import BookingHintService
 from src.services.delivery import DeliveryService
 from src.services.event_history import EventHistory
+from src.services.heartbeat import HeartbeatService
 from src.services.web_app import create_web_app
 from src.utils.frame_cleanup import cleanup_frames
 from src.utils.logging import get_logger, setup_logging
@@ -58,6 +59,7 @@ class AnprAgent:
             settings, self._backend, self._queue, event_history=self.history
         )
         self.controller = AgentController(self)
+        self.heartbeat = HeartbeatService(self, self._process_started_at)
         self._ocr_busy = False
         self._pending_frame: Path | None = None
         self._ocr_worker_running = False
@@ -276,6 +278,7 @@ class AnprAgent:
                 self._frame_cleanup_loop(), name="frame-cleanup"
             )
             self.booking_hints.start_background_refresh()
+            self.heartbeat.start()
             if self.settings.agent_auto_start:
                 await self.controller.start()
 
@@ -290,6 +293,7 @@ class AnprAgent:
                 self._cleanup_task.cancel()
                 await asyncio.gather(self._cleanup_task, return_exceptions=True)
             await self.booking_hints.stop()
+            await self.heartbeat.stop()
             await self.controller.stop()
             await self._backend.close()
             logger.info("process stopped", extra={"event": "process_stopped"})
