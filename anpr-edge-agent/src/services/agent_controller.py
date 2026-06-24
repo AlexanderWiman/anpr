@@ -77,6 +77,11 @@ class AgentController:
                 self._state = AgentState.RUNNING
                 self._agent_started_at = datetime.now(timezone.utc)
 
+                if self._agent._motion_gate is not None:
+                    self._agent._motion_gate.reset()
+                    self._agent._motion_gate.activate()
+                self._agent._plate_confirmation.clear()
+
                 logger.info(
                     "agent started",
                     extra={

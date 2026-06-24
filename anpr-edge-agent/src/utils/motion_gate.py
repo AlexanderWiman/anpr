@@ -49,6 +49,26 @@ class MotionGate:
             "frames_skipped": self._frames_skipped,
         }
 
+    def reset(self) -> None:
+        """Clear reference frame — next capture establishes a new baseline."""
+        self._reference = None
+        self._active_until = 0.0
+
+    def activate(self, seconds: float | None = None) -> None:
+        """Force OCR for a period (e.g. after Start when a car is already in frame)."""
+        duration = self._active_seconds if seconds is None else seconds
+        self._active_until = time.monotonic() + duration
+        self._activations += 1
+        logger.info(
+            "motion gate activated manually",
+            extra={
+                "event": "motion_active",
+                "score": None,
+                "active_seconds": duration,
+                "reason": "agent_start",
+            },
+        )
+
     def should_process(self, frame_path: Path) -> bool:
         """Return True when the frame should be sent to OCR."""
         image = cv2.imread(str(frame_path))

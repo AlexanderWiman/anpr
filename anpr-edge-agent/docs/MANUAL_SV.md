@@ -119,6 +119,20 @@ Inställningar i `data\.env`:
 
 ---
 
+## Bil står still i bild (verkstad / test)
+
+Rörelsegaten (`MOTION_GATE_ENABLED=true`) kör OCR främst när något **rör sig** i kameran. En bil som redan står på plats kan därför ignoreras.
+
+**Prova på plats:**
+
+1. På ANPR-sidan: **Stoppa** → **Starta** (från v1.0.24 skannas då i ~45 sek även utan rörelse).
+2. Eller skapa lite rörelse framför kameran (gå förbi, öppna port).
+3. Tillfälligt test: sätt `MOTION_GATE_ENABLED=false` i `data\.env` och starta om agenten.
+
+Kolla **Senaste händelser** på `http://127.0.0.1:8080` — där syns detektering innan den når staff-appen.
+
+---
+
 ## Uppdateringar
 
 **Personal behöver inte ladda ner ZIP eller förstå GitHub.**
