@@ -4,9 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Installera ANPR</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
+  <div id="server-offline-banner" class="server-offline-banner hidden" role="alert">
+    Installationsguiden körs inte längre. Låt terminalfönstret vara öppet, eller starta om med
+    <strong>python3 -m installer</strong> i anpr-edge-agent-mappen.
+  </div>
   <div class="window">
     <aside class="sidebar">
       <div class="brand">
@@ -150,6 +154,6 @@
       </footer>
     </main>
   </div>
-  <script src="/static/wizard.js?v=9"></script>
+  <script src="/static/wizard.js?v=10"></script>
 </body>
 </html>

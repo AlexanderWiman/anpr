@@ -21,7 +21,42 @@ let prereqPollTimer = null;
 let prereqData = { ok: false, items: [] };
 let installInfo = { installed: false };
 
+const INSTALLER_OFFLINE_MSG =
+  "Installationsguiden svarar inte (127.0.0.1:17880).\n\n" +
+  "Låt terminalfönstret som startade guiden vara öppet.\n" +
+  "Om det stängdes: öppna Terminal och kör python3 -m installer igen.";
+
 const $ = (id) => document.getElementById(id);
+
+function setServerOffline(offline) {
+  const banner = $("server-offline-banner");
+  if (banner) banner.classList.toggle("hidden", !offline);
+  const btn = $("btn-next");
+  if (btn && currentStep > 0 && currentStep < 5) {
+    btn.disabled = offline;
+  }
+}
+
+async function installerFetch(path, options = {}) {
+  try {
+    const res = await fetch(path, options);
+    setServerOffline(false);
+    return { ok: true, res };
+  } catch {
+    setServerOffline(true);
+    return { ok: false, res: null };
+  }
+}
+
+async function pingInstaller() {
+  const result = await installerFetch("/api/ping", { cache: "no-store" });
+  if (!result.ok || !result.res?.ok) {
+    setServerOffline(true);
+    return false;
+  }
+  setServerOffline(false);
+  return true;
+}
 
 function buildNav() {
   const nav = $("steps-nav");
@@ -148,16 +183,34 @@ function validateStep(n) {
 }
 
 async function validateBackendCredentials() {
-  const res = await fetch("/api/install/validate-credentials", {
+  const backendUrl = $("backend-url").value.trim();
+  if (backendUrl.endsWith(".railway") && !backendUrl.endsWith(".railway.app")) {
+    alert("Backend-URL ser ofullständig ut. Den ska sluta med .railway.app");
+    return false;
+  }
+
+  const result = await installerFetch("/api/install/validate-credentials", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       site_id: $("site").value,
-      backend_url: $("backend-url").value.trim(),
+      backend_url: backendUrl,
       anpr_token: $("token").value.trim(),
     }),
   });
-  const data = await res.json();
+  if (!result.ok) {
+    alert(INSTALLER_OFFLINE_MSG);
+    return false;
+  }
+
+  let data;
+  try {
+    data = await result.res.json();
+  } catch {
+    alert("Kunde inte läsa svar från guiden. Försök ladda om sidan.");
+    return false;
+  }
+
   if (!data.ok) {
     alert(data.message || "Token kunde inte verifieras.");
     return false;
@@ -511,10 +564,19 @@ buildNav();
 setStep(0);
 
 async function initWizard() {
-  await Promise.all([loadPrereqs(), loadSites()]);
-  await loadExistingInstall();
-  if (!installInfo.savedConfig) {
-    updateCameraUi();
+  await pingInstaller();
+  window.setInterval(() => {
+    pingInstaller();
+  }, 8000);
+
+  try {
+    await Promise.all([loadPrereqs(), loadSites()]);
+    await loadExistingInstall();
+    if (!installInfo.savedConfig) {
+      updateCameraUi();
+    }
+  } catch {
+    setServerOffline(true);
   }
 }
 
