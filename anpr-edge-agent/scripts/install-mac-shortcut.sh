@@ -25,6 +25,10 @@ if [[ -x "./scripts/choose-site.sh" ]]; then
   fi
 fi
 
+if [[ -x "./scripts/wait-for-agent.sh" ]]; then
+  ./scripts/wait-for-agent.sh || true
+fi
+
 open "http://127.0.0.1:\${HEALTH_PORT:-8080}"
 
 if launchctl print "gui/\$(id -u)/com.anpr.edge-agent" &>/dev/null; then

@@ -476,11 +476,103 @@ Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger
     log("Autostart aktiverad (schemalagd uppgift vid inloggning)")
 
 
+def agent_is_running(port: int = 8080) -> bool:
+    import urllib.error
+    import urllib.request
+
+    url = f"http://127.0.0.1:{port}/api/version"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as response:
+            return 200 <= response.status < 300
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError):
+        return False
+
+
+def wait_for_agent(
+    app_dir: Path,
+    log: Callable[[str], None],
+    *,
+    port: int = 8080,
+    timeout_seconds: float = 120.0,
+) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    announced = False
+
+    while time.monotonic() < deadline:
+        if agent_is_running(port):
+            return True
+        if not announced:
+            log("Startar ANPR — väntar på kontrollpanelen (kan ta upp till en minut)…")
+            announced = True
+        time.sleep(1)
+
+    log("ANPR svarar inte ännu — försöker starta om…")
+    _start_agent_direct(app_dir, log)
+
+    retry_deadline = time.monotonic() + 45
+    while time.monotonic() < retry_deadline:
+        if agent_is_running(port):
+            return True
+        time.sleep(1)
+
+    support = support_dir()
+    log("Kontrollpanelen svarar inte på port 8080.")
+    log(f"Kör manuellt: {app_dir / 'scripts' / 'run-agent.sh'}")
+    log(f"Logg: {support / 'logs' / 'launchd-stderr.log'}")
+    return False
+
+
+def _start_agent_direct(app_dir: Path, log: Callable[[str], None] | None = None) -> None:
+    def _log(msg: str) -> None:
+        if log:
+            log(msg)
+
+    if sys.platform == "darwin":
+        run_script = app_dir / "scripts" / "run-agent.sh"
+        if run_script.is_file():
+            run_script.chmod(run_script.stat().st_mode | 0o755)
+            log_path = support_dir() / "logs" / "manual-start.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as log_file:
+                subprocess.Popen(
+                    ["bash", str(run_script)],
+                    cwd=app_dir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            _log("Startade ANPR i bakgrunden.")
+            return
+
+    if sys.platform == "win32":
+        run = app_dir / "scripts" / "run-agent.cmd"
+        subprocess.Popen(
+            ["cmd", "/c", str(run)],
+            cwd=app_dir,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+        )
+        return
+
+    py = app_dir / ".venv" / "bin" / "python"
+    if py.is_file():
+        subprocess.Popen([str(py), "-m", "src.main"], cwd=app_dir, start_new_session=True)
+
+
 def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
     if sys.platform == "darwin":
-        cmd = Path.home() / "Desktop" / "ANPR.command"
+        app_dir = install_dir()
+        shortcut_script = app_dir / "scripts" / "install-mac-shortcut.sh"
+        if shortcut_script.is_file():
+            env = {**os.environ, "ANPR_INSTALL_DIR": str(app_dir)}
+            subprocess.run(["bash", str(shortcut_script)], env=env, check=True)
+            log(f"Genväg skapad: {Path.home() / 'Desktop' / 'Start ANPR.command'}")
+            return
+        cmd = Path.home() / "Desktop" / "Start ANPR.command"
         cmd.write_text(
-            "#!/bin/bash\nopen 'http://127.0.0.1:8080'\n",
+            "#!/bin/bash\n"
+            f'cd "{app_dir}"\n'
+            f'"{app_dir}/scripts/wait-for-agent.sh"\n'
+            'open "http://127.0.0.1:8080"\n',
             encoding="utf-8",
         )
         os.chmod(cmd, 0o755)
@@ -606,13 +698,29 @@ def stop_agent(app_dir: Path, log: Callable[[str], None] | None = None, *, port:
 
 def start_agent(app_dir: Path, log: Callable[[str], None]) -> None:
     stop_agent(app_dir, log)
+    run_script = app_dir / "scripts" / "run-agent.sh"
+    if run_script.is_file():
+        run_script.chmod(run_script.stat().st_mode | 0o755)
+
     if sys.platform == "darwin":
         uid = os.getuid()
-        subprocess.run(
-            ["launchctl", "kickstart", "-k", f"gui/{uid}/com.anpr.edge-agent"],
-            check=False,
+        label = f"gui/{uid}/com.anpr.edge-agent"
+        bootstrap = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{uid}", str(Path.home() / "Library" / "LaunchAgents" / "com.anpr.edge-agent.plist")],
+            capture_output=True,
+            text=True,
         )
-        time.sleep(2)
+        if bootstrap.returncode != 0 and "already bootstrapped" not in (bootstrap.stderr or "").lower():
+            log("LaunchAgent kunde inte laddas — startar ANPR direkt.")
+            _start_agent_direct(app_dir, log)
+            time.sleep(2)
+            return
+        subprocess.run(["launchctl", "kickstart", "-k", label], check=False)
+        time.sleep(3)
+        if not agent_is_running():
+            log("LaunchAgent svarar inte — startar ANPR direkt.")
+            _start_agent_direct(app_dir, log)
+            time.sleep(2)
     elif sys.platform == "win32":
         run = app_dir / "scripts" / "run-agent.cmd"
         subprocess.Popen(
@@ -686,9 +794,12 @@ def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None
     install_autostart(target, log)
     create_dashboard_shortcut(log)
     start_agent(target, log)
+    ready = wait_for_agent(target, log)
     log("Uppdatering klar — kamera och token är oförändrade.")
-    if open_browser:
+    if open_browser and ready:
         webbrowser.open("http://127.0.0.1:8080")
+    elif open_browser:
+        log("Öppna kontrollpanelen via 'Start ANPR' på skrivbordet när agenten svarar.")
 
 
 def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser: bool = True) -> None:
@@ -717,9 +828,12 @@ def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser:
     install_autostart(target, log)
     create_dashboard_shortcut(log)
     start_agent(target, log)
+    ready = wait_for_agent(target, log)
     log("Klart!")
-    if open_browser:
+    if open_browser and ready:
         webbrowser.open("http://127.0.0.1:8080")
+    elif open_browser:
+        log("Öppna kontrollpanelen via 'Start ANPR' på skrivbordet när agenten svarar.")
 
 
 def check_prerequisites() -> list[str]:

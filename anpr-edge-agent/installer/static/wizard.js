@@ -503,7 +503,10 @@ async function pollStatus() {
   if (data.status === "done") {
     $("progress-fill").style.width = "100%";
     clearInterval(pollTimer);
-    setTimeout(() => setStep(5), 600);
+    setTimeout(() => {
+      setStep(5);
+      waitForAgentDashboard();
+    }, 600);
   }
   if (data.status === "error") {
     clearInterval(pollTimer);
@@ -550,8 +553,50 @@ $("btn-back").addEventListener("click", () => {
 });
 
 $("btn-open").addEventListener("click", () => {
-  window.open("http://127.0.0.1:8080", "_blank");
+  openAgentDashboard();
 });
+
+async function waitForAgentDashboard() {
+  const lead = $("done-lead");
+  for (let i = 0; i < 120; i += 1) {
+    try {
+      const res = await fetch("http://127.0.0.1:8080/api/version", { cache: "no-store" });
+      if (res.ok) {
+        if (lead) {
+          lead.textContent = "ANPR är installerat och körs.";
+        }
+        window.open("http://127.0.0.1:8080", "_blank");
+        return;
+      }
+    } catch (_) {}
+    if (lead && i > 2) {
+      lead.textContent = "ANPR startar — väntar på kontrollpanelen…";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (lead) {
+    lead.textContent =
+      "Installation klar. Starta via Start ANPR på skrivbordet om kontrollpanelen inte öppnas.";
+  }
+}
+
+async function openAgentDashboard() {
+  for (let i = 0; i < 30; i += 1) {
+    try {
+      const res = await fetch("http://127.0.0.1:8080/api/version", { cache: "no-store" });
+      if (res.ok) {
+        window.open("http://127.0.0.1:8080", "_blank");
+        return;
+      }
+    } catch (_) {}
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  alert(
+    "ANPR svarar inte på http://127.0.0.1:8080.\n\n" +
+      "Dubbelklicka Start ANPR på skrivbordet och lämna terminalfönstret öppet.\n\n" +
+      "Logg: ~/Library/Application Support/anpr-edge-agent/logs/launchd-stderr.log",
+  );
+}
 
 document.querySelectorAll('input[name="cam-type"]').forEach((el) => {
   el.addEventListener("change", updateCameraUi);
