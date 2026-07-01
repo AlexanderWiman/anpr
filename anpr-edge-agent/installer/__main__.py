@@ -10,32 +10,13 @@ import threading
 import time
 
 from installer.bootstrap import start_waiting_server, wait_until_listening
+from installer.runtime import ensure_installer_venv
 
 DEFAULT_PORT = 17880
-_INSTALLER_DEPS = (
-    "fastapi",
-    "uvicorn",
-    "httpx",
-    "pydantic",
-    "pydantic-settings",
-    "python-dotenv",
-)
 
 
 def _log(msg: str) -> None:
     print(msg, flush=True)
-
-
-def _ensure_installer_deps() -> None:
-    try:
-        import uvicorn  # noqa: F401
-        from installer.server import app  # noqa: F401
-    except ImportError:
-        _log("Installerar Python-komponenter (första gången kan ta några minuter)...")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check", *_INSTALLER_DEPS],
-            check=True,
-        )
 
 
 def _resolve_port() -> tuple[int, bool]:
@@ -94,7 +75,28 @@ def _wait_for_server(port: int, attempts: int = 100) -> bool:
     return False
 
 
+def _wait_for_api_ready(port: int, attempts: int = 150) -> bool:
+    import urllib.error
+    import urllib.request
+
+    ping_url = f"http://127.0.0.1:{port}/api/ping"
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen(ping_url, timeout=0.3) as response:
+                if response.status == 200:
+                    return True
+        except urllib.error.HTTPError as exc:
+            if exc.code == 503:
+                pass
+        except OSError:
+            pass
+        time.sleep(0.1)
+    return False
+
+
 def main() -> None:
+    ensure_installer_venv(_log)
+
     port, reuse = _resolve_port()
     url = f"http://127.0.0.1:{port}"
     waiting_url = f"{url}/waiting.html?port={port}"
@@ -112,8 +114,6 @@ def main() -> None:
 
     _open_url(waiting_url)
     _log("Väntesida öppnad — laddar installationsguiden...")
-
-    _ensure_installer_deps()
 
     try:
         import uvicorn
@@ -137,6 +137,12 @@ def main() -> None:
     if not _wait_for_server(port):
         _log("Server startade inte.")
         sys.exit(1)
+
+    if _wait_for_api_ready(port):
+        _open_url(url)
+    else:
+        _log("Guiden svarar inte ännu — öppna manuellt:")
+        _log(f"  {url}")
 
     _log("")
     _log("  ANPR Install Wizard")

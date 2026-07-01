@@ -7,7 +7,7 @@ import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -63,6 +63,17 @@ class ValidateCredentialsRequest(BaseModel):
 @app.get("/")
 async def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/waiting.html")
+async def waiting_html():
+    """Bootstrap opens this path; redirect once the real wizard server is up."""
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/api/ping")

@@ -31,6 +31,7 @@ notify "Öppnar installationsguiden…"
 find_python() {
   local py
   for py in \
+    "$ROOT/.installer-venv/bin/python" \
     "$ROOT/.venv/bin/python" \
     "$ROOT/.venv/bin/python3" \
     "/Library/Frameworks/Python.framework/Versions/Current/bin/python3" \

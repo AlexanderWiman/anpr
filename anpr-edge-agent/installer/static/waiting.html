@@ -86,6 +86,15 @@
           return;
         }
       } catch (_) {}
+      if (attempts > 8) {
+        try {
+          const root = await fetch(`${base}/`, { cache: "no-store", redirect: "follow" });
+          if (root.ok && root.headers.get("content-type")?.includes("text/html")) {
+            window.location.replace(base + "/");
+            return;
+          }
+        } catch (_) {}
+      }
       setTimeout(poll, 600);
     }
 
