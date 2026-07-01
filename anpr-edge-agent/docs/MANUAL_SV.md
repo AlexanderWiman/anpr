@@ -16,8 +16,8 @@ All bildbehandling sker lokalt. Endast registreringsnummer skickas till er centr
 
 | Mac | Windows |
 |-----|---------|
-| I **Finder**: dubbelklicka **Install ANPR** | Dubbelklicka **launch/Installer.cmd** |
-| Reserv (Terminal): **launch/Installer.command** | Förutsättningar: **launch/Install-Prerequisites.cmd** |
+| I **Finder**: dubbelklicka **Install ANPR** | Dubbelklicka **Installera ANPR.cmd** (i rotmappen efter uppackning) |
+| Reserv (Terminal): **launch/Installer.command** | Reserv: **anpr-edge-agent\\launch\\Installer.cmd** |
 
 En **installationsguide** öppnas (som när man installerar ett vanligt program): Välkommen → Anläggning → Kamera → Token → Installera → Klart.
 
