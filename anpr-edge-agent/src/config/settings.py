@@ -126,10 +126,19 @@ class Settings(BaseSettings):
 
 
 def load_settings() -> Settings:
-    """Load settings from the installed support .env when available."""
+    """Load settings — project .env when developing, installed support .env in production."""
     import os
 
-    from src.config.env_sync import installed_support_env
+    from src.config.env_sync import installed_support_env, project_env_file, running_from_installed_app
+
+    explicit = os.environ.get("ANPR_ENV_FILE")
+    if explicit:
+        return Settings(_env_file=explicit)
+
+    use_installed = os.environ.get("ANPR_USE_INSTALLED_ENV") == "1"
+    project_env = project_env_file()
+    if project_env is not None and not use_installed and not running_from_installed_app():
+        return Settings(_env_file=str(project_env))
 
     support = installed_support_env()
     if support is not None:
@@ -149,7 +158,17 @@ def load_settings() -> Settings:
 def settings_env_path() -> str | None:
     from pathlib import Path
 
-    from src.config.env_sync import installed_support_env
+    from src.config.env_sync import installed_support_env, project_env_file, running_from_installed_app
+
+    import os
+
+    if os.environ.get("ANPR_ENV_FILE"):
+        return os.environ["ANPR_ENV_FILE"]
+
+    project_env = project_env_file()
+    if project_env is not None and os.environ.get("ANPR_USE_INSTALLED_ENV") != "1":
+        if not running_from_installed_app():
+            return str(project_env)
 
     support = installed_support_env()
     if support is not None:

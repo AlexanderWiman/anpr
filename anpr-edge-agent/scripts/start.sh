@@ -11,7 +11,11 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-./scripts/choose-site.sh
+if [ -f ".env" ] && [ "${ANPR_FORCE_SITE_PROFILE:-}" != "1" ]; then
+  echo "Using .env in $(pwd)"
+else
+  ./scripts/choose-site.sh
+fi
 
 PORT="${HEALTH_PORT:-8080}"
 if lsof -i ":$PORT" -t >/dev/null 2>&1; then
