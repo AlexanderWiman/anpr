@@ -382,8 +382,11 @@
             hintsText += ' (hämtar...)';
           }
         }
-        document.getElementById('site-info').textContent =
-          `${status.site.siteId} · ${status.site.cameraId}${hintsText}`;
+        const cameras = status.cameras || [];
+        const multiHall = cameras.length > 1;
+        document.getElementById('site-info').textContent = multiHall
+          ? `${status.site.siteId} · ${cameras.length} hallar${hintsText}`
+          : `${status.site.siteId} · ${status.site.cameraId}${hintsText}`;
 
         if (status.version) {
           document.getElementById('agent-version').textContent = `v${status.version}`;
@@ -399,12 +402,26 @@
         }
 
         const running = status.agent.state === 'running';
-        const camOk = status.camera.status === 'connected';
+        if (multiHall) {
+          const parts = cameras.map((camera) => {
+            const ok = camera.status === 'connected';
+            const state = !running ? '—' : (ok ? 'OK' : camera.status);
+            return `${camera.label}: ${state}`;
+          });
+          document.getElementById('camera-status').textContent = parts.join(' · ');
+          const details = cameras.map((camera) => {
+            const when = camera.lastFrameAt ? fmtTime(camera.lastFrameAt) : '—';
+            return `${camera.label}: ${running ? `Senast ${when}` : 'Inte startad'}`;
+          });
+          document.getElementById('camera-detail').textContent = details.join(' · ');
+        } else {
+          const camOk = status.camera.status === 'connected';
 
-        document.getElementById('camera-status').textContent =
-          !running ? '—' : (camOk ? 'OK' : status.camera.status);
-        document.getElementById('camera-detail').textContent =
-          running ? `Senast ${fmtTime(status.camera.lastFrameAt)}` : 'Inte startad';
+          document.getElementById('camera-status').textContent =
+            !running ? '—' : (camOk ? 'OK' : status.camera.status);
+          document.getElementById('camera-detail').textContent =
+            running ? `Senast ${fmtTime(status.camera.lastFrameAt)}` : 'Inte startad';
+        }
 
         const backendLabels = {
           ok: { text: 'OK', color: 'var(--green)' },

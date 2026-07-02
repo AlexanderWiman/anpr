@@ -366,15 +366,18 @@ def _run(
 
     flags = _subprocess_flags()
     run_env = env if env is not None else os.environ.copy()
+    run_kwargs: dict = {
+        "cwd": cwd,
+        "capture_output": True,
+        "text": True,
+        "creationflags": flags,
+        "env": run_env,
+    }
+    if sys.platform == "win32":
+        run_kwargs["encoding"] = "utf-8"
+        run_kwargs["errors"] = "replace"
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            creationflags=flags,
-            env=run_env,
-        )
+        proc = subprocess.run(cmd, **run_kwargs)
     finally:
         stop.set()
 
