@@ -66,28 +66,44 @@ class AgentController:
                     asyncio.create_task(
                         self._agent.delivery.run_retry_loop(), name="retry-loop"
                     ),
-                    asyncio.create_task(
-                        self._agent.camera.run_capture_loop(
-                            self._agent.process_frame_background,
-                            interval_ms=self._agent.get_capture_interval_ms,
-                        ),
-                        name="capture-loop",
-                    ),
                 ]
+                for pipeline in self._agent.pipelines.values():
+                    camera_id = pipeline.camera_id
+
+                    async def frame_callback(
+                        frame_path,
+                        bound_camera_id=camera_id,
+                    ) -> None:
+                        await self._agent.process_frame_background(
+                            frame_path,
+                            bound_camera_id,
+                        )
+
+                    async def run_loop(bound_pipeline=pipeline) -> None:
+                        await bound_pipeline.capture.run_capture_loop(
+                            frame_callback,
+                            interval_ms=bound_pipeline.get_capture_interval_ms,
+                        )
+
+                    self._tasks.append(
+                        asyncio.create_task(
+                            run_loop(),
+                            name=f"capture-loop-{camera_id}",
+                        )
+                    )
+
                 self._state = AgentState.RUNNING
                 self._agent_started_at = datetime.now(timezone.utc)
 
-                if self._agent._motion_gate is not None:
-                    self._agent._motion_gate.reset()
-                    self._agent._motion_gate.activate()
-                self._agent._plate_confirmation.clear()
+                for pipeline in self._agent.pipelines.values():
+                    pipeline.reset_runtime_state()
 
                 logger.info(
                     "agent started",
                     extra={
                         "event": "agent_started",
                         "site_id": self._agent.settings.site_id,
-                        "camera_id": self._agent.settings.camera_id,
+                        "camera_ids": list(self._agent.pipelines.keys()),
                     },
                 )
                 return {"ok": True, "message": "Agenten är startad", **self.status()}
@@ -116,7 +132,8 @@ class AgentController:
                 await asyncio.gather(*self._tasks, return_exceptions=True)
 
             self._tasks.clear()
-            await self._agent.camera.disconnect()
+            for pipeline in self._agent.pipelines.values():
+                await pipeline.capture.disconnect()
             self._state = AgentState.STOPPED
             self._agent_started_at = None
 

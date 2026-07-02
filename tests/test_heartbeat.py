@@ -21,6 +21,7 @@ def _settings() -> Settings:
         anpr_agent_token="secret-token",
         heartbeat_enabled=True,
         heartbeat_interval_seconds=60,
+        _env_file=None,
     )
 
 
@@ -46,6 +47,8 @@ def test_send_heartbeat_posts_to_site_url():
 
 
 def test_heartbeat_builds_payload_from_agent():
+    from collections import deque
+
     settings = _settings()
     agent = MagicMock()
     agent.settings = settings
@@ -54,9 +57,15 @@ def test_heartbeat_builds_payload_from_agent():
     agent.camera.status.value = "connected"
     agent.camera.last_frame_at = datetime.now(timezone.utc)
     agent.camera.frames_captured = 10
+    agent.primary_pipeline.capture = agent.camera
+    agent.primary_pipeline.camera_id = "entrance-1"
+    agent.primary_pipeline.label = "entrance-1"
+    agent.primary_pipeline.direction = "entry"
+    agent.pipelines = {"entrance-1": agent.primary_pipeline}
     agent.provider_name = "yolo_ocr"
     agent._ocr_busy = False
-    agent._pending_frame = None
+    agent._ocr_queue = deque()
+    agent.delivery.refresh_backend_status = AsyncMock()
     agent.delivery.backend_status.as_dict.return_value = {
         "ok": True,
         "code": "ok",

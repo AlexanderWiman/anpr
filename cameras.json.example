@@ -1,0 +1,18 @@
+{
+  "cameras": [
+    {
+      "id": "hall-1",
+      "label": "Hall 1",
+      "direction": "entry",
+      "enabled": true,
+      "rtsp_url": "rtsp://user:password@192.168.0.96:554/stream1"
+    },
+    {
+      "id": "hall-2",
+      "label": "Hall 2",
+      "direction": "entry",
+      "enabled": true,
+      "rtsp_url": "rtsp://user:password@192.168.0.97:554/stream1"
+    }
+  ]
+}

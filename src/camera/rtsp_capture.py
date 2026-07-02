@@ -6,6 +6,7 @@ from typing import Any
 from src.camera.frame_io import frame_filename, save_frame
 
 from src.camera.base import CameraStatus, FrameCaptureService
+from src.config.cameras import CameraConfig
 from src.config.settings import Settings
 from src.utils.logging import get_logger
 
@@ -19,8 +20,9 @@ class RTSPCaptureService(FrameCaptureService):
     Uses OpenCV VideoCapture with FFmpeg backend.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, camera: CameraConfig) -> None:
         self._settings = settings
+        self._camera = camera
         self._capture: Any = None
         self._status = CameraStatus.DISCONNECTED
         self._last_frame_at: datetime | None = None
@@ -43,12 +45,20 @@ class RTSPCaptureService(FrameCaptureService):
     def frames_captured(self) -> int:
         return self._frames_captured
 
+    @property
+    def camera_id(self) -> str:
+        return self._camera.id
+
+    @property
+    def frames_dir(self) -> Path:
+        return self._settings.frames_dir_for(self._camera.id)
+
     def _open_capture(self) -> Any:
         import os
 
         import cv2
 
-        url = self._settings.camera_rtsp_url
+        url = self._camera.rtsp_url
         transport = (self._settings.rtsp_transport or "tcp").strip().lower()
         if transport in ("tcp", "udp"):
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = f"rtsp_transport;{transport}"
@@ -61,7 +71,11 @@ class RTSPCaptureService(FrameCaptureService):
             self._status = CameraStatus.CONNECTING
             logger.info(
                 "connecting to camera",
-                extra={"event": "camera_connecting", "rtsp_url": self._redact_url()},
+                extra={
+                    "event": "camera_connecting",
+                    "camera_id": self._camera.id,
+                    "rtsp_url": self._redact_url(),
+                },
             )
 
             loop = asyncio.get_event_loop()
@@ -108,7 +122,11 @@ class RTSPCaptureService(FrameCaptureService):
             self._status = CameraStatus.CONNECTED
             logger.info(
                 "camera connected",
-                extra={"event": "camera_connected", "rtsp_url": self._redact_url()},
+                extra={
+                    "event": "camera_connected",
+                    "camera_id": self._camera.id,
+                    "rtsp_url": self._redact_url(),
+                },
             )
             return True
 
@@ -167,6 +185,7 @@ class RTSPCaptureService(FrameCaptureService):
                 "frame captured",
                 extra={
                     "event": "frame_captured",
+                    "camera_id": self._camera.id,
                     "path": str(frame_path),
                     "frame_number": self._frames_captured,
                 },
@@ -190,7 +209,7 @@ class RTSPCaptureService(FrameCaptureService):
         return await self.connect()
 
     def _redact_url(self) -> str:
-        url = self._settings.camera_rtsp_url or ""
+        url = self._camera.rtsp_url or ""
         if "@" in url:
             scheme, rest = url.split("://", 1)
             if "@" in rest:

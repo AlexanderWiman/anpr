@@ -20,6 +20,7 @@ let pollTimer = null;
 let prereqPollTimer = null;
 let prereqData = { ok: false, items: [] };
 let installInfo = { installed: false };
+let savedHallCount = null;
 
 const INSTALLER_OFFLINE_MSG =
   "Installationsguiden svarar inte (127.0.0.1:17880).\n\n" +
@@ -102,76 +103,230 @@ function updateNextForPrereqs() {
 }
 
 function camType() {
-  return document.querySelector('input[name="cam-type"]:checked').value;
+  return camTypeFor(1);
+}
+
+function camTypeFor(hallIndex) {
+  const name = hallIndex === 2 ? "cam2-type" : "cam-type";
+  return document.querySelector(`input[name="${name}"]:checked`).value;
+}
+
+function hallCount() {
+  return Number($("hall-count").value || 1);
+}
+
+function selectedSite() {
+  return sites.find((s) => s.id === $("site").value);
 }
 
 function needsAuth() {
-  const t = camType();
-  return t === "tapo" || t === "rtsp";
+  return needsAuthFor(camType());
 }
 
-function buildPreviewUrl() {
-  const ip = $("camera-ip").value.trim();
-  const port = $("camera-port").value;
+function needsAuthFor(type) {
+  return type === "tapo" || type === "rtsp";
+}
+
+function buildPreviewUrlFor(hallIndex = 1) {
+  const isSecond = hallIndex === 2;
+  const ip = $(isSecond ? "camera2-ip" : "camera-ip").value.trim();
+  const port = $(isSecond ? "camera2-port" : "camera-port").value;
   if (!ip) return "";
 
-  const type = camType();
+  const type = camTypeFor(hallIndex);
   if (type === "ip_webcam") {
     return `http://${ip}:${port || 8080}/videofeed`;
   }
-
-  const path = type === "tapo" ? "/stream1" : ($("rtsp-path").value || "/stream1");
-  const user = $("rtsp-user").value.trim();
-  const pass = $("rtsp-pass").value;
+  const user = $(isSecond ? "rtsp2-user" : "rtsp-user").value.trim();
+  const pass = $(isSecond ? "rtsp2-pass" : "rtsp-pass").value;
+  const path =
+    type === "tapo" ? "/stream1" : $(isSecond ? "rtsp2-path" : "rtsp-path").value || "/stream1";
   const auth =
-    user && pass ? `${encodeURIComponent(user)}:****@` : user ? `${encodeURIComponent(user)}@` : "";
-
+    user && pass
+      ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
+      : user
+        ? `${encodeURIComponent(user)}@`
+        : "";
   return `rtsp://${auth}${ip}:${port || 554}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function updateCameraUi() {
-  const type = camType();
-  const auth = needsAuth();
+function buildPreviewUrl() {
+  return buildPreviewUrlFor(1);
+}
 
-  $("auth-fields").classList.toggle("hidden", !auth);
-  $("rtsp-extra").classList.toggle("hidden", type !== "rtsp");
+function readCameraForm(hallIndex = 1) {
+  const isSecond = hallIndex === 2;
+  const type = camTypeFor(hallIndex);
+  return {
+    camera_id: isSecond ? "hall-2" : "hall-1",
+    label: isSecond ? "Hall 2" : "Hall 1",
+    direction: "entry",
+    camera_ip: $(isSecond ? "camera2-ip" : "camera-ip").value.trim(),
+    camera_type: type,
+    camera_port: Number($(isSecond ? "camera2-port" : "camera-port").value),
+    rtsp_path: type === "tapo" ? "/stream1" : $(isSecond ? "rtsp2-path" : "rtsp-path").value,
+    rtsp_user: $(isSecond ? "rtsp2-user" : "rtsp-user").value.trim(),
+    rtsp_password: $(isSecond ? "rtsp2-pass" : "rtsp-pass").value,
+  };
+}
 
-  if (type === "tapo") {
-    $("camera-port").value = "554";
-    $("rtsp-path").value = "/stream1";
-  } else if (type === "ip_webcam") {
-    $("camera-port").value = "8080";
-  } else if (type === "rtsp" && $("camera-port").value === "8080") {
-    $("camera-port").value = "554";
+function buildInstallCameras() {
+  const cameras = [readCameraForm(1)];
+  if (hallCount() === 2) {
+    cameras.push(readCameraForm(2));
+  }
+  return cameras;
+}
+
+function updateHallCountUi() {
+  const count = hallCount();
+  const site = selectedSite();
+  $("hall-2-panel").classList.toggle("hidden", count < 2);
+  $("hall-1-title").textContent = count > 1 ? "Hall 1" : "Kamera";
+
+  const hint = $("hall-count-hint");
+  if (site?.defaultHalls === 2) {
+    hint.textContent = `${site.label} har två hallar med kamera.`;
+  } else {
+    hint.textContent =
+      "Välj 2 om ni har (eller får) kamera i mer än en hall. Hall 1 räcker om ni bara har en kamera.";
   }
 
-  const url = buildPreviewUrl();
-  $("camera-preview").textContent = url ? `Kamera-URL: ${url}` : "";
+  const expandHint = $("hall-expand-hint");
+  const showExpand =
+    installInfo.installed && savedHallCount === 1 && count === 1;
+  if (showExpand) {
+    expandHint.textContent =
+      "Har ni lagt till en ny hall? Välj 2 hallar ovan och fyll i den nya kameran i nästa steg. Hall 1 behåller sina nuvarande uppgifter.";
+    expandHint.classList.remove("hidden");
+  } else if (installInfo.installed && savedHallCount === 1 && count === 2) {
+    expandHint.textContent =
+      "Bra — fyll i kamerauppgifter för den nya hallen (Hall 2) i nästa steg.";
+    expandHint.classList.remove("hidden");
+  } else {
+    expandHint.textContent = "";
+    expandHint.classList.add("hidden");
+  }
+}
+
+function prefillHallTwoFromHallOne() {
+  if ($("camera2-ip").value.trim()) {
+    return;
+  }
+  if (!$("rtsp2-user").value.trim() && $("rtsp-user").value.trim()) {
+    $("rtsp2-user").value = $("rtsp-user").value;
+  }
+  if (!$("rtsp2-pass").value && $("rtsp-pass").value) {
+    $("rtsp2-pass").value = $("rtsp-pass").value;
+  }
+  const type1 = camTypeFor(1);
+  const type2Radio = document.querySelector(`input[name="cam2-type"][value="${type1}"]`);
+  if (type2Radio) type2Radio.checked = true;
+  if (!$("camera2-port").value || $("camera2-port").value === "554") {
+    $("camera2-port").value = $("camera-port").value;
+  }
+}
+
+function onHallCountChanged() {
+  if (hallCount() === 2) {
+    prefillHallTwoFromHallOne();
+  }
+  updateCameraUi();
+}
+
+function applyCameraToForm(camera, hallIndex = 1) {
+  if (!camera) return;
+  const isSecond = hallIndex === 2;
+  if (camera.camera_ip) $(isSecond ? "camera2-ip" : "camera-ip").value = camera.camera_ip;
+  if (camera.camera_port) {
+    $(isSecond ? "camera2-port" : "camera-port").value = String(camera.camera_port);
+  }
+  if (camera.rtsp_path) $(isSecond ? "rtsp2-path" : "rtsp-path").value = camera.rtsp_path;
+  if (camera.rtsp_user) $(isSecond ? "rtsp2-user" : "rtsp-user").value = camera.rtsp_user;
+  if (camera.rtsp_password) $(isSecond ? "rtsp2-pass" : "rtsp-pass").value = camera.rtsp_password;
+  if (camera.camera_type) {
+    const name = isSecond ? "cam2-type" : "cam-type";
+    const radio = document.querySelector(`input[name="${name}"][value="${camera.camera_type}"]`);
+    if (radio) radio.checked = true;
+  }
+}
+
+function updateCameraUiFor(hallIndex = 1) {
+  const isSecond = hallIndex === 2;
+  const type = camTypeFor(hallIndex);
+  const auth = needsAuthFor(type);
+
+  $(isSecond ? "auth-fields-2" : "auth-fields").classList.toggle("hidden", !auth);
+  $(isSecond ? "rtsp-extra-2" : "rtsp-extra").classList.toggle("hidden", type !== "rtsp");
+
+  const portEl = $(isSecond ? "camera2-port" : "camera-port");
+  const pathEl = $(isSecond ? "rtsp2-path" : "rtsp-path");
+  if (type === "tapo") {
+    portEl.value = "554";
+    pathEl.value = "/stream1";
+  } else if (type === "ip_webcam") {
+    portEl.value = "8080";
+  } else if (type === "rtsp" && portEl.value === "8080") {
+    portEl.value = "554";
+  }
+
+  const url = buildPreviewUrlFor(hallIndex);
+  const preview = $(isSecond ? "camera2-preview" : "camera-preview");
+  preview.textContent = url ? `Kamera-URL: ${url.replace(/:([^:@/]+)@/, ":****@")}` : "";
+}
+
+function updateCameraUi() {
+  updateHallCountUi();
+  updateCameraUiFor(1);
+  if (hallCount() === 2) {
+    updateCameraUiFor(2);
+  }
 }
 
 function fillSummary() {
-  const site = sites.find((s) => s.id === $("site").value);
-  const user = $("rtsp-user").value.trim();
+  const site = selectedSite();
+  const cameras = buildInstallCameras();
+  const cameraRows = cameras
+    .map(
+      (camera) =>
+        `<dt>${camera.label}</dt><dd>${camera.camera_ip} (${CAM_LABELS[camera.camera_type] || camera.camera_type})</dd>`
+    )
+    .join("");
   $("summary").innerHTML = `
     <dt>Anläggning</dt><dd>${site?.label || "—"}</dd>
-    <dt>Kamera</dt><dd>${$("camera-ip").value} (${CAM_LABELS[camType()] || camType()})</dd>
-    ${user ? `<dt>Kamerakonto</dt><dd>${user}</dd>` : ""}
+    <dt>Hallar</dt><dd>${cameras.length}</dd>
+    ${cameraRows}
     <dt>Backend</dt><dd>${$("backend-url").value || "—"}</dd>
   `;
 }
 
-function validateStep(n) {
-  if (n === 2) {
-    if (!$("camera-ip").value.trim()) {
-      alert("Ange kamera-IP.");
+function validateCameraForm(hallIndex = 1) {
+  const isSecond = hallIndex === 2;
+  const ip = $(isSecond ? "camera2-ip" : "camera-ip").value.trim();
+  if (!ip) {
+    alert(isSecond ? "Ange kamera-IP för hall 2." : "Ange kamera-IP.");
+    return false;
+  }
+  const type = camTypeFor(hallIndex);
+  if (needsAuthFor(type)) {
+    const user = $(isSecond ? "rtsp2-user" : "rtsp-user").value.trim();
+    const pass = $(isSecond ? "rtsp2-pass" : "rtsp-pass").value;
+    if (!user || !pass) {
+      alert(
+        isSecond
+          ? "Ange användarnamn och lösenord för hall 2."
+          : "Ange användarnamn och lösenord för kameran (Tapo Camera Account)."
+      );
       return false;
     }
-    if (needsAuth()) {
-      if (!$("rtsp-user").value.trim() || !$("rtsp-pass").value) {
-        alert("Ange användarnamn och lösenord för kameran (Tapo Camera Account).");
-        return false;
-      }
-    }
+  }
+  return true;
+}
+
+function validateStep(n) {
+  if (n === 2) {
+    if (!validateCameraForm(1)) return false;
+    if (hallCount() === 2 && !validateCameraForm(2)) return false;
   }
   if (n === 3) {
     if (!$("token").value.trim()) {
@@ -240,21 +395,36 @@ function applySavedConfig(cfg) {
     siteEl.value = cfg.site_id;
   }
 
-  if (cfg.camera_id) $("camera-id").value = cfg.camera_id;
-  if (cfg.direction) $("direction").value = cfg.direction;
-  if (cfg.camera_ip) $("camera-ip").value = cfg.camera_ip;
-  if (cfg.camera_port) $("camera-port").value = String(cfg.camera_port);
-  if (cfg.rtsp_path) $("rtsp-path").value = cfg.rtsp_path;
-  if (cfg.rtsp_user) $("rtsp-user").value = cfg.rtsp_user;
-  if (cfg.rtsp_password) $("rtsp-pass").value = cfg.rtsp_password;
+  if (cfg.hall_count) {
+    $("hall-count").value = String(cfg.hall_count);
+    savedHallCount = Number(cfg.hall_count);
+  }
+
+  if (Array.isArray(cfg.cameras) && cfg.cameras.length) {
+    applyCameraToForm(cfg.cameras[0], 1);
+    if (cfg.cameras[1]) {
+      applyCameraToForm(cfg.cameras[1], 2);
+    }
+  } else {
+    applyCameraToForm(cfg, 1);
+  }
+
   if (cfg.backend_url) $("backend-url").value = cfg.backend_url;
   if (cfg.anpr_token) $("token").value = cfg.anpr_token;
 
-  if (cfg.camera_type) {
-    const radio = document.querySelector(`input[name="cam-type"][value="${cfg.camera_type}"]`);
-    if (radio) radio.checked = true;
-  }
+  updateCameraUi();
+}
 
+function applyDefaultHallCountForSite() {
+  const site = selectedSite();
+  if (!site) return;
+  $("hall-count").value = String(site.defaultHalls || 1);
+}
+
+function onSiteChanged() {
+  if (!installInfo.savedConfig) {
+    applyDefaultHallCountForSite();
+  }
   updateCameraUi();
 }
 
@@ -286,7 +456,12 @@ function renderUpdatePanel() {
       <h2>ANPR är installerat</h2>
       <p>${statusLine}</p>
       ${remoteLine}
-      <p class="hint">Behöver du ändra kamera eller token? Gå vidare i guiden — dina nuvarande inställningar fylls i automatiskt.</p>
+      <p class="hint">Behöver ni ändra kamera, lägga till en hall eller uppdatera token? Gå vidare i guiden — nuvarande inställningar fylls i automatiskt.</p>
+      ${
+        installInfo.savedConfig?.hall_count === 1
+          ? '<p class="hint"><strong>Ny hall?</strong> Välj <em>2 hallar</em> i nästa steg och fyll i den nya kameran.</p>'
+          : ""
+      }
     `;
     return;
   }
@@ -459,6 +634,7 @@ async function loadSites() {
     .map((s) => `<option value="${s.id}">${s.label}</option>`)
     .join("");
   $("backend-url").value = defaultBackend;
+  onSiteChanged();
 }
 
 async function startInstall() {
@@ -468,17 +644,10 @@ async function startInstall() {
   $("btn-next").disabled = true;
   $("btn-back").disabled = true;
 
-  const type = camType();
   const body = {
     site_id: $("site").value,
-    camera_ip: $("camera-ip").value.trim(),
-    camera_type: type,
-    camera_port: Number($("camera-port").value),
-    rtsp_path: type === "tapo" ? "/stream1" : $("rtsp-path").value,
-    rtsp_user: $("rtsp-user").value.trim(),
-    rtsp_password: $("rtsp-pass").value,
-    camera_id: $("camera-id").value.trim() || "entrance-1",
-    direction: $("direction").value,
+    hall_count: hallCount(),
+    cameras: buildInstallCameras(),
     backend_url: $("backend-url").value.trim(),
     anpr_token: $("token").value.trim(),
   };
@@ -601,9 +770,25 @@ async function openAgentDashboard() {
 document.querySelectorAll('input[name="cam-type"]').forEach((el) => {
   el.addEventListener("change", updateCameraUi);
 });
-["camera-ip", "camera-port", "rtsp-path", "rtsp-user", "rtsp-pass"].forEach((id) => {
+document.querySelectorAll('input[name="cam2-type"]').forEach((el) => {
+  el.addEventListener("change", updateCameraUi);
+});
+[
+  "camera-ip",
+  "camera-port",
+  "rtsp-path",
+  "rtsp-user",
+  "rtsp-pass",
+  "camera2-ip",
+  "camera2-port",
+  "rtsp2-path",
+  "rtsp2-user",
+  "rtsp2-pass",
+].forEach((id) => {
   $(id).addEventListener("input", updateCameraUi);
 });
+$("hall-count").addEventListener("change", onHallCountChanged);
+$("site").addEventListener("change", onSiteChanged);
 
 buildNav();
 setStep(0);

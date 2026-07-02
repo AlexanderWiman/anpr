@@ -23,7 +23,7 @@ from installer.prerequisites import (
     install_prerequisite,
     prerequisite_status_payload,
 )
-from installer.sites import DEFAULT_BACKEND_URL, SITES
+from installer.sites import DEFAULT_BACKEND_URL, SITE_PROFILES
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -40,16 +40,22 @@ _state = {
 _lock = threading.Lock()
 
 
-class InstallRequest(BaseModel):
-    site_id: str
+class InstallCameraRequest(BaseModel):
+    camera_id: str = "hall-1"
+    label: str = "Hall 1"
+    direction: str = "entry"
     camera_ip: str
     camera_type: str = "tapo"
-    camera_port: int = 8080
+    camera_port: int = 554
     rtsp_path: str = "/stream1"
     rtsp_user: str = ""
     rtsp_password: str = ""
-    camera_id: str = "entrance-1"
-    direction: str = "entry"
+
+
+class InstallRequest(BaseModel):
+    site_id: str
+    hall_count: int = 1
+    cameras: list[InstallCameraRequest]
     backend_url: str = DEFAULT_BACKEND_URL
     anpr_token: str = Field(min_length=8)
 
@@ -84,7 +90,15 @@ async def api_ping():
 @app.get("/api/sites")
 async def api_sites():
     return {
-        "sites": [{"id": sid, "label": label} for sid, label in SITES],
+        "sites": [
+            {
+                "id": site.id,
+                "label": site.label,
+                "defaultHalls": site.default_halls,
+                "maxHalls": site.max_halls,
+            }
+            for site in SITE_PROFILES
+        ],
         "defaultBackendUrl": DEFAULT_BACKEND_URL,
     }
 
@@ -200,18 +214,30 @@ async def api_install(body: InstallRequest):
         if _state["status"] == "running":
             raise HTTPException(409, "Installation pågår redan")
 
+    from installer.engine import InstallCameraConfig
+
+    if not body.cameras:
+        raise HTTPException(400, "Minst en kamera krävs")
+
+    cameras = [
+        InstallCameraConfig(
+            camera_id=camera.camera_id,
+            label=camera.label,
+            direction=camera.direction,
+            camera_ip=camera.camera_ip,
+            camera_type=camera.camera_type,
+            camera_port=camera.camera_port,
+            rtsp_path=camera.rtsp_path,
+            rtsp_user=camera.rtsp_user,
+            rtsp_password=camera.rtsp_password,
+        )
+        for camera in body.cameras
+    ]
     cfg = InstallConfig(
         site_id=body.site_id,
-        camera_ip=body.camera_ip,
-        camera_type=body.camera_type,
-        camera_port=body.camera_port,
-        rtsp_path=body.rtsp_path,
-        rtsp_user=body.rtsp_user,
-        rtsp_password=body.rtsp_password,
-        camera_id=body.camera_id,
-        direction=body.direction,
         backend_url=body.backend_url.rstrip("/"),
         anpr_token=body.anpr_token,
+        cameras=cameras,
     )
 
     def work() -> None:

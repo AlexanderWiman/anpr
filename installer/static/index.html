@@ -36,28 +36,29 @@
       <!-- Steg 1: Anläggning -->
       <section class="step" data-step="1">
         <h1>Välj anläggning</h1>
-        <p class="lead">Var ska kameran rapportera ifrån?</p>
+        <p class="lead">Var ska kamerorna rapportera ifrån?</p>
         <label class="field">
           <span>Anläggning</span>
           <select id="site"></select>
         </label>
         <label class="field">
-          <span>Kamera-ID</span>
-          <input id="camera-id" value="entrance-1" placeholder="entrance-1">
-        </label>
-        <label class="field">
-          <span>Riktning</span>
-          <select id="direction">
-            <option value="entry">Infart (entry)</option>
-            <option value="exit">Utfart (exit)</option>
+          <span>Antal hallar med kamera</span>
+          <select id="hall-count">
+            <option value="1">1 hall</option>
+            <option value="2">2 hallar</option>
           </select>
         </label>
+        <p class="hint" id="hall-count-hint"></p>
+        <p class="hint hidden" id="hall-expand-hint"></p>
       </section>
 
       <!-- Steg 2: Kamera -->
       <section class="step" data-step="2">
-        <h1>Kamera</h1>
-        <p class="lead">Ange IP och inloggning till kameran på det lokala nätverket.</p>
+        <h1>Kameror</h1>
+        <p class="lead">Ange IP och inloggning för varje hall. Samma kameratyp och konto fungerar ofta för båda.</p>
+
+        <div class="hall-panel">
+          <h2 class="hall-title" id="hall-1-title">Kamera</h2>
         <label class="field">
           <span>Kamera-IP</span>
           <input id="camera-ip" value="192.168.0.96" placeholder="192.168.0.96">
@@ -110,6 +111,53 @@
           </label>
         </div>
         <p class="hint" id="camera-preview"></p>
+        </div>
+
+        <div id="hall-2-panel" class="hall-panel hidden">
+          <h2 class="hall-title">Hall 2</h2>
+          <label class="field">
+            <span>Kamera-IP</span>
+            <input id="camera2-ip" value="192.168.0.97" placeholder="192.168.0.97">
+          </label>
+          <div class="field">
+            <span>Kameratyp</span>
+            <div class="radio-group">
+              <label class="radio-row">
+                <input type="radio" name="cam2-type" value="tapo" checked>
+                <span class="radio-label"><strong>Tapo (TP-Link)</strong></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="cam2-type" value="ip_webcam">
+                <span class="radio-label"><strong>IP Webcam</strong></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="cam2-type" value="rtsp">
+                <span class="radio-label"><strong>Annan RTSP-kamera</strong></span>
+              </label>
+            </div>
+          </div>
+          <label class="field">
+            <span>Port</span>
+            <input id="camera2-port" type="number" value="554">
+          </label>
+          <div id="auth-fields-2" class="auth-box">
+            <label class="field compact">
+              <span>Användarnamn</span>
+              <input id="rtsp2-user" autocomplete="username" placeholder="t.ex. anpr">
+            </label>
+            <label class="field compact">
+              <span>Lösenord</span>
+              <input id="rtsp2-pass" type="password" autocomplete="current-password" placeholder="Kamerans lösenord">
+            </label>
+          </div>
+          <div id="rtsp-extra-2" class="rtsp-box hidden">
+            <label class="field compact">
+              <span>RTSP-sökväg</span>
+              <input id="rtsp2-path" value="/stream1" placeholder="/stream1">
+            </label>
+          </div>
+          <p class="hint" id="camera2-preview"></p>
+        </div>
       </section>
 
       <!-- Steg 3: Backend -->
@@ -154,6 +202,6 @@
       </footer>
     </main>
   </div>
-  <script src="/static/wizard.js?v=11"></script>
+  <script src="/static/wizard.js?v=13"></script>
 </body>
 </html>

@@ -240,6 +240,16 @@ h1 {
   margin-bottom: 0;
 }
 
+.hall-panel {
+  margin-bottom: 1.5rem;
+}
+
+.hall-title {
+  font-size: 1.05rem;
+  margin: 0 0 1rem;
+  color: var(--text-muted, #5c6470);
+}
+
 .hidden { display: none !important; }
 
 .server-offline-banner {

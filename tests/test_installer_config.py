@@ -1,6 +1,16 @@
 """Tests for installer .env readback."""
 
-from installer.engine import decode_camera_url, parse_env_text, render_env, build_camera_url, InstallConfig
+import json
+
+from installer.engine import (
+    InstallCameraConfig,
+    InstallConfig,
+    decode_camera_url,
+    parse_env_text,
+    render_cameras_json,
+    render_env,
+    build_camera_url,
+)
 
 
 def test_parse_env_text_ignores_comments_and_quotes():
@@ -56,4 +66,39 @@ def test_render_and_decode_roundtrip_tapo():
     assert decoded["camera_ip"] == cfg.camera_ip
     assert decoded["rtsp_user"] == cfg.rtsp_user
     assert decoded["rtsp_password"] == cfg.rtsp_password
-    assert build_camera_url(cfg) == env["CAMERA_RTSP_URL"]
+    assert build_camera_url(cfg.resolved_cameras()[0]) == env["CAMERA_RTSP_URL"]
+
+
+def test_render_multi_hall_writes_cameras_json():
+    cfg = InstallConfig(
+        site_id="falun",
+        backend_url="https://example.com",
+        anpr_token="token-12345678",
+        cameras=[
+            InstallCameraConfig(
+                camera_id="hall-1",
+                label="Hall 1",
+                camera_ip="192.168.0.96",
+                camera_type="tapo",
+                camera_port=554,
+                rtsp_user="admin",
+                rtsp_password="secret1",
+            ),
+            InstallCameraConfig(
+                camera_id="hall-2",
+                label="Hall 2",
+                camera_ip="192.168.0.97",
+                camera_type="tapo",
+                camera_port=554,
+                rtsp_user="admin",
+                rtsp_password="secret2",
+            ),
+        ],
+    )
+    env = parse_env_text(render_env(cfg))
+    assert "CAMERAS_CONFIG" in env
+    assert "CAMERA_RTSP_URL" not in env
+    cameras = json.loads(render_cameras_json(cfg.resolved_cameras()))
+    assert len(cameras["cameras"]) == 2
+    assert cameras["cameras"][0]["id"] == "hall-1"
+    assert cameras["cameras"][1]["id"] == "hall-2"

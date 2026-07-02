@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,24 +11,56 @@ import threading
 import time
 import webbrowser
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 
 @dataclass
+class InstallCameraConfig:
+    camera_id: str
+    label: str
+    direction: str = "entry"
+    camera_ip: str = ""
+    camera_type: str = "tapo"
+    camera_port: int = 554
+    rtsp_path: str = "/stream1"
+    rtsp_user: str = ""
+    rtsp_password: str = ""
+
+
+@dataclass
 class InstallConfig:
     site_id: str
-    camera_ip: str
-    camera_type: str  # tapo | ip_webcam | rtsp
-    camera_port: int
-    rtsp_path: str
-    rtsp_user: str
-    rtsp_password: str
-    camera_id: str
-    direction: str
     backend_url: str
     anpr_token: str
+    cameras: list[InstallCameraConfig] = field(default_factory=list)
+    # Legacy single-camera fields (used when cameras is empty)
+    camera_ip: str = ""
+    camera_type: str = "tapo"
+    camera_port: int = 554
+    rtsp_path: str = "/stream1"
+    rtsp_user: str = ""
+    rtsp_password: str = ""
+    camera_id: str = "hall-1"
+    direction: str = "entry"
+
+    def resolved_cameras(self) -> list[InstallCameraConfig]:
+        if self.cameras:
+            return self.cameras
+        return [
+            InstallCameraConfig(
+                camera_id=self.camera_id or "hall-1",
+                label="Hall 1",
+                direction=self.direction,
+                camera_ip=self.camera_ip,
+                camera_type=self.camera_type,
+                camera_port=self.camera_port,
+                rtsp_path=self.rtsp_path,
+                rtsp_user=self.rtsp_user,
+                rtsp_password=self.rtsp_password,
+            )
+        ]
 
 
 def repo_root() -> Path:
@@ -46,23 +79,23 @@ def support_dir() -> Path:
     return Path.home() / "Library" / "Application Support" / "anpr-edge-agent"
 
 
-def build_camera_url(cfg: InstallConfig) -> str:
-    ip = cfg.camera_ip.strip()
-    if cfg.camera_type == "ip_webcam":
-        port = cfg.camera_port or 8080
+def build_camera_url(camera: InstallCameraConfig) -> str:
+    ip = camera.camera_ip.strip()
+    if camera.camera_type == "ip_webcam":
+        port = camera.camera_port or 8080
         return f"http://{ip}:{port}/videofeed"
 
-    port = cfg.camera_port or 554
-    if cfg.camera_type == "tapo":
+    port = camera.camera_port or 554
+    if camera.camera_type == "tapo":
         path = "/stream1"
     else:
-        path = (cfg.rtsp_path or "/stream1").strip()
+        path = (camera.rtsp_path or "/stream1").strip()
     if not path.startswith("/"):
         path = f"/{path}"
-    if cfg.rtsp_user:
-        user = quote(cfg.rtsp_user, safe="")
-        password = quote(cfg.rtsp_password or "", safe="")
-        auth = f"{user}:{password}@" if cfg.rtsp_password else f"{user}@"
+    if camera.rtsp_user:
+        user = quote(camera.rtsp_user, safe="")
+        password = quote(camera.rtsp_password or "", safe="")
+        auth = f"{user}:{password}@" if camera.rtsp_password else f"{user}@"
         return f"rtsp://{auth}{ip}:{port}{path}"
     return f"rtsp://{ip}:{port}{path}"
 
@@ -113,6 +146,42 @@ def read_installed_config() -> dict | None:
         return None
 
     env = parse_env_text(env_path.read_text(encoding="utf-8"))
+    cameras_path = support_dir() / "cameras.json"
+    if env.get("CAMERAS_CONFIG"):
+        configured = Path(env["CAMERAS_CONFIG"]).expanduser()
+        if configured.is_file():
+            cameras_path = configured
+
+    if cameras_path.is_file():
+        raw = json.loads(cameras_path.read_text(encoding="utf-8"))
+        cameras: list[dict] = []
+        for item in raw.get("cameras", []):
+            rtsp_url = item.get("rtsp_url", "")
+            if not rtsp_url:
+                continue
+            camera = decode_camera_url(rtsp_url)
+            cameras.append(
+                {
+                    "camera_id": item.get("id", "hall-1"),
+                    "label": item.get("label") or item.get("id", "hall-1"),
+                    "direction": item.get("direction", "entry"),
+                    **camera,
+                }
+            )
+        if not cameras:
+            return None
+        primary = cameras[0]
+        return {
+            "site_id": env.get("SITE_ID", ""),
+            "hall_count": len(cameras),
+            "cameras": cameras,
+            "camera_id": primary["camera_id"],
+            "direction": primary.get("direction", "entry"),
+            "backend_url": env.get("BACKEND_URL", ""),
+            "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
+            **{k: primary[k] for k in primary if k not in ("camera_id", "label", "direction")},
+        }
+
     camera_url = env.get("CAMERA_RTSP_URL", "")
     if not camera_url:
         return None
@@ -120,12 +189,37 @@ def read_installed_config() -> dict | None:
     camera = decode_camera_url(camera_url)
     return {
         "site_id": env.get("SITE_ID", ""),
-        "camera_id": env.get("CAMERA_ID", "entrance-1"),
+        "hall_count": 1,
+        "cameras": [
+            {
+                "camera_id": env.get("CAMERA_ID", "hall-1"),
+                "label": "Hall 1",
+                "direction": env.get("DIRECTION", "entry"),
+                **camera,
+            }
+        ],
+        "camera_id": env.get("CAMERA_ID", "hall-1"),
         "direction": env.get("DIRECTION", "entry"),
         "backend_url": env.get("BACKEND_URL", ""),
         "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
         **camera,
     }
+
+
+def render_cameras_json(cameras: list[InstallCameraConfig]) -> str:
+    payload = {
+        "cameras": [
+            {
+                "id": camera.camera_id,
+                "label": camera.label,
+                "direction": camera.direction,
+                "enabled": True,
+                "rtsp_url": build_camera_url(camera),
+            }
+            for camera in cameras
+        ]
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
 def render_env(cfg: InstallConfig) -> str:
@@ -134,16 +228,25 @@ def render_env(cfg: InstallConfig) -> str:
             return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
         return value
 
-    camera_url = build_camera_url(cfg)
+    cameras = cfg.resolved_cameras()
+    primary = cameras[0]
+    camera_url = build_camera_url(primary)
     storage = support_dir() / "storage"
     logs = support_dir() / "logs"
     yolo = install_dir() / "models" / "plate_yolov8.pt"
+    cameras_file = support_dir() / "cameras.json"
 
     lines = [
         f"SITE_ID={cfg.site_id}",
-        f"CAMERA_ID={cfg.camera_id}",
-        f"DIRECTION={cfg.direction}",
-        f"CAMERA_RTSP_URL={camera_url}",
+        f"CAMERA_ID={primary.camera_id}",
+        f"DIRECTION={primary.direction}",
+    ]
+    if len(cameras) > 1:
+        lines.append(f"CAMERAS_CONFIG={cameras_file}")
+    else:
+        lines.append(f"CAMERA_RTSP_URL={camera_url}")
+    lines.extend(
+        [
         "",
         f"BACKEND_URL={cfg.backend_url.rstrip('/')}",
         f"ANPR_AGENT_TOKEN={env_value(cfg.anpr_token)}",
@@ -179,7 +282,8 @@ def render_env(cfg: InstallConfig) -> str:
         "",
         f"LOG_DIR={logs}",
         "LOG_LEVEL=INFO",
-    ]
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -393,6 +497,11 @@ def write_config(cfg: InstallConfig, log: Callable[[str], None]) -> Path:
     env_path = support / ".env"
     env_text = render_env(cfg)
     env_path.write_text(env_text, encoding="utf-8")
+    cameras = cfg.resolved_cameras()
+    if len(cameras) > 1:
+        cameras_path = support / "cameras.json"
+        cameras_path.write_text(render_cameras_json(cameras), encoding="utf-8")
+        log(f"Kameror sparade: {cameras_path}")
     log(f"Konfiguration sparad: {env_path}")
     return env_path
 

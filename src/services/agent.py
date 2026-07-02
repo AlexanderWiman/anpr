@@ -1,30 +1,36 @@
 import asyncio
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 
 import uvicorn
 
-from src.camera.factory import create_capture_service
 from src.config.settings import Settings
 from src.models.event import AnprEvent
 from src.providers.factory import create_plate_provider
 from src.queue.deduplicator import PlateDeduplicator
-from src.queue.plate_confirmation import FramePlateBuffer
 from src.queue.event_queue import EventQueue
 from src.services.agent_controller import AgentController
 from src.services.backend_client import BackendClient
 from src.services.booking_hints import BookingHintService
+from src.services.camera_pipeline import CameraPipeline
 from src.services.delivery import DeliveryService
 from src.services.event_history import EventHistory
 from src.services.heartbeat import HeartbeatService
 from src.services.web_app import create_web_app
 from src.utils.frame_cleanup import cleanup_frames
 from src.utils.logging import get_logger, setup_logging
-from src.utils.motion_gate import MotionGate
 from src.utils.plates import normalize_plate
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class PendingOcrFrame:
+    camera_id: str
+    frame_path: Path
 
 
 class AnprAgent:
@@ -43,7 +49,9 @@ class AnprAgent:
         settings.events_dir.mkdir(parents=True, exist_ok=True)
         settings.log_dir.mkdir(parents=True, exist_ok=True)
 
-        self.camera = create_capture_service(settings)
+        self.pipelines: dict[str, CameraPipeline] = {
+            camera.id: CameraPipeline(settings, camera) for camera in settings.cameras
+        }
         self._backend = BackendClient(settings)
         self.booking_hints = BookingHintService(
             self._backend,
@@ -52,7 +60,6 @@ class AnprAgent:
         )
         self._provider = create_plate_provider(settings, booking_hints=self.booking_hints)
         self.deduplicator = PlateDeduplicator(settings)
-        self._plate_confirmation = FramePlateBuffer(window_size=3, min_hits=2)
         self._queue = EventQueue(settings.queue_file)
         self.history = EventHistory(max_size=settings.web_history_size)
         self.delivery = DeliveryService(
@@ -61,26 +68,26 @@ class AnprAgent:
         self.controller = AgentController(self)
         self.heartbeat = HeartbeatService(self, self._process_started_at)
         self._ocr_busy = False
-        self._pending_frame: Path | None = None
+        self._ocr_queue: deque[PendingOcrFrame] = deque()
+        self._queued_frame_paths: dict[str, Path] = {}
         self._ocr_worker_running = False
-        self._motion_gate = (
-            MotionGate(
-                threshold=settings.motion_threshold,
-                active_seconds=settings.motion_active_seconds,
-            )
-            if settings.motion_gate_enabled
-            else None
-        )
         self._cleanup_task: asyncio.Task | None = None
         self._frame_captures_in_flight: set[str] = set()
 
-    def get_capture_interval_ms(self) -> int:
-        settings = self.settings
-        if self._motion_gate is not None and self._motion_gate.is_active:
-            return settings.frame_interval_ms
-        if self._motion_gate is not None:
-            return settings.motion_scan_interval_ms
-        return settings.frame_interval_ms
+    @property
+    def camera(self):
+        """Backward-compatible access to the primary camera capture service."""
+        return self.primary_pipeline.capture
+
+    @property
+    def primary_pipeline(self) -> CameraPipeline:
+        return next(iter(self.pipelines.values()))
+
+    def pipeline_for(self, camera_id: str) -> CameraPipeline:
+        pipeline = self.pipelines.get(camera_id)
+        if pipeline is None:
+            raise KeyError(f"Unknown camera_id: {camera_id}")
+        return pipeline
 
     @property
     def provider_name(self) -> str:
@@ -100,8 +107,6 @@ class AnprAgent:
 
         self._frame_captures_in_flight.add(request_id)
         try:
-            from datetime import datetime, timezone
-
             from src.services.frame_capture import capture_rtsp_jpeg_base64
 
             loop = asyncio.get_event_loop()
@@ -154,14 +159,15 @@ class AnprAgent:
         finally:
             self._frame_captures_in_flight.discard(request_id)
 
-    async def process_frame(self, frame_path: Path) -> bool:
+    async def process_frame(self, frame_path: Path, camera_id: str) -> bool:
         """Run plate detection on a captured frame and deliver events."""
+        pipeline = self.pipeline_for(camera_id)
         detections = await self._provider.detect_plate(str(frame_path))
 
         min_conf = min(self.settings.min_confidence, self.settings.ocr_min_confidence)
 
         if not detections:
-            self._plate_confirmation.observe_empty()
+            pipeline.plate_confirmation.observe_empty()
             return False
 
         delivered = False
@@ -171,6 +177,7 @@ class AnprAgent:
                     "detection below confidence threshold",
                     extra={
                         "event": "detection_filtered",
+                        "camera_id": camera_id,
                         "plate": detection.plate,
                         "confidence": detection.confidence,
                         "min_confidence": min_conf,
@@ -179,14 +186,14 @@ class AnprAgent:
                 continue
 
             normalized = normalize_plate(detection.plate)
-            confirmed = self._plate_confirmation.observe(
+            confirmed = pipeline.plate_confirmation.observe(
                 normalized, detection.confidence
             )
             if confirmed is None:
                 continue
 
             confirmed_plate, confirmed_conf = confirmed
-            self._plate_confirmation.mark_handled(confirmed_plate)
+            pipeline.plate_confirmation.mark_handled(confirmed_plate)
 
             if self._queue.has_pending_plate(confirmed_plate):
                 continue
@@ -196,12 +203,12 @@ class AnprAgent:
 
             event = AnprEvent(
                 site_id=self.settings.site_id,
-                camera_id=self.settings.camera_id,
+                camera_id=camera_id,
                 plate=confirmed_plate,
                 confidence=round(confirmed_conf, 4),
                 captured_at=datetime.now(timezone.utc),
                 provider=detection.provider,
-                direction=self.settings.direction,
+                direction=pipeline.direction,
                 snapshot_path=str(frame_path) if self.settings.save_snapshots else None,
             )
 
@@ -210,8 +217,8 @@ class AnprAgent:
                 confidence=confirmed_conf,
                 provider=detection.provider,
                 site_id=self.settings.site_id,
-                camera_id=self.settings.camera_id,
-                direction=self.settings.direction,
+                camera_id=camera_id,
+                direction=pipeline.direction,
                 captured_at=event.captured_at,
                 status="detected",
             )
@@ -222,16 +229,22 @@ class AnprAgent:
 
         return delivered
 
-    async def process_frame_background(self, frame_path: Path) -> None:
+    async def process_frame_background(self, frame_path: Path, camera_id: str) -> None:
         """Queue latest frame for OCR — skip static scenes when motion gate is on."""
-        if self._motion_gate is not None and not self._motion_gate.should_process(frame_path):
+        pipeline = self.pipeline_for(camera_id)
+        if not pipeline.should_process_frame(frame_path):
             frame_path.unlink(missing_ok=True)
             return
 
-        if self._pending_frame and self._pending_frame.exists():
-            self._pending_frame.unlink(missing_ok=True)
+        stale_path = self._queued_frame_paths.get(camera_id)
+        if stale_path and stale_path.exists():
+            stale_path.unlink(missing_ok=True)
 
-        self._pending_frame = frame_path
+        self._queued_frame_paths[camera_id] = frame_path
+        self._ocr_queue = deque(
+            item for item in self._ocr_queue if item.camera_id != camera_id
+        )
+        self._ocr_queue.append(PendingOcrFrame(camera_id=camera_id, frame_path=frame_path))
 
         if not self._ocr_worker_running:
             asyncio.create_task(self._ocr_worker(), name="ocr-worker")
@@ -239,25 +252,40 @@ class AnprAgent:
     async def _run_frame_cleanup_once(self) -> None:
         settings = self.settings
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            partial(
-                cleanup_frames,
-                settings.frames_dir,
-                max_age_hours=settings.frame_retention_hours,
-                max_files=settings.frame_max_files,
-                max_storage_mb=settings.frame_max_storage_mb,
-            ),
-        )
-        if result.deleted_count:
+        total_deleted = 0
+        total_freed = 0
+        total_remaining = 0
+        total_remaining_bytes = 0
+
+        cleanup_dirs = {pipeline.frames_dir for pipeline in self.pipelines.values()}
+        if not settings.is_multi_camera:
+            cleanup_dirs.add(settings.frames_dir)
+
+        for frames_dir in cleanup_dirs:
+            result = await loop.run_in_executor(
+                None,
+                partial(
+                    cleanup_frames,
+                    frames_dir,
+                    max_age_hours=settings.frame_retention_hours,
+                    max_files=settings.frame_max_files,
+                    max_storage_mb=settings.frame_max_storage_mb,
+                ),
+            )
+            total_deleted += result.deleted_count
+            total_freed += result.freed_bytes
+            total_remaining += result.remaining_count
+            total_remaining_bytes += result.remaining_bytes
+
+        if total_deleted:
             logger.info(
                 "frame storage cleaned",
                 extra={
                     "event": "frame_cleanup",
-                    "deleted": result.deleted_count,
-                    "freed_mb": round(result.freed_bytes / (1024 * 1024), 2),
-                    "remaining": result.remaining_count,
-                    "remaining_mb": round(result.remaining_bytes / (1024 * 1024), 2),
+                    "deleted": total_deleted,
+                    "freed_mb": round(total_freed / (1024 * 1024), 2),
+                    "remaining": total_remaining,
+                    "remaining_mb": round(total_remaining_bytes / (1024 * 1024), 2),
                 },
             )
 
@@ -278,16 +306,23 @@ class AnprAgent:
     async def _ocr_worker(self) -> None:
         self._ocr_worker_running = True
         try:
-            while self._pending_frame is not None:
-                frame_path = self._pending_frame
-                self._pending_frame = None
+            while self._ocr_queue:
+                pending = self._ocr_queue.popleft()
+                frame_path = pending.frame_path
+                camera_id = pending.camera_id
+                self._queued_frame_paths.pop(camera_id, None)
                 self._ocr_busy = True
                 try:
-                    delivered = await self.process_frame(frame_path)
+                    delivered = await self.process_frame(frame_path, camera_id)
                 except Exception as exc:
                     logger.exception(
                         "frame processing error",
-                        extra={"event": "error", "error": str(exc), "path": str(frame_path)},
+                        extra={
+                            "event": "error",
+                            "camera_id": camera_id,
+                            "error": str(exc),
+                            "path": str(frame_path),
+                        },
                     )
                     delivered = False
                 finally:
@@ -300,12 +335,14 @@ class AnprAgent:
 
     async def run(self) -> None:
         """Start web dashboard and optionally auto-start ANPR capture."""
+        camera_ids = [camera.id for camera in self.settings.cameras]
         logger.info(
             "process starting",
             extra={
                 "event": "process_starting",
                 "site_id": self.settings.site_id,
-                "camera_id": self.settings.camera_id,
+                "camera_ids": camera_ids,
+                "camera_count": len(camera_ids),
                 "provider": self._provider.name,
                 "auto_start": self.settings.agent_auto_start,
             },

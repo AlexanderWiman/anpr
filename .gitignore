@@ -10,6 +10,8 @@ venv/
 .env
 .env.*
 !.env.example
+hash
+cameras.json
 sites/*.env
 !sites/*.env.example
 
@@ -20,6 +22,8 @@ models/*.pt
 # Media
 assets/*
 !assets/.gitkeep
+*.mp4
+*.mov
 
 # Storage & logs (runtime)
 storage/frames/*

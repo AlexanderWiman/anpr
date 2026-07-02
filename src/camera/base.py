@@ -69,7 +69,7 @@ class FrameCaptureService(ABC):
                 await asyncio.sleep(settings.rtsp_reconnect_delay_ms / 1000)
                 continue
 
-            frame_path = await self.capture_frame(settings.frames_dir)
+            frame_path = await self.capture_frame(self.frames_dir)
             if frame_path is None:
                 await asyncio.sleep(settings.rtsp_reconnect_delay_ms / 1000)
                 continue

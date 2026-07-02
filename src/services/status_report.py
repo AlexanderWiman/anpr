@@ -9,6 +9,21 @@ if TYPE_CHECKING:
     from src.services.agent import AnprAgent
 
 
+def _camera_status(pipeline) -> dict:
+    camera = pipeline.capture
+    return {
+        "id": pipeline.camera_id,
+        "label": pipeline.label,
+        "direction": pipeline.direction,
+        "source": camera.source_type,
+        "status": camera.status.value,
+        "lastFrameAt": (
+            camera.last_frame_at.isoformat() if camera.last_frame_at else None
+        ),
+        "framesCaptured": camera.frames_captured,
+    }
+
+
 def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dict:
     from src.config.settings import settings_env_path
 
@@ -16,8 +31,9 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
     config_path = settings_env_path()
     now = datetime.now(timezone.utc)
     agent_status = agent.controller.status()
-    camera = agent.camera
+    primary = agent.primary_pipeline.capture
     delivery = agent.delivery
+    cameras = [_camera_status(pipeline) for pipeline in agent.pipelines.values()]
 
     return {
         "status": "ok",
@@ -28,21 +44,23 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             "siteId": settings.site_id,
             "cameraId": settings.camera_id,
             "direction": settings.direction,
+            "cameraCount": len(cameras),
         },
         "camera": {
-            "source": camera.source_type,
-            "status": camera.status.value,
+            "source": primary.source_type,
+            "status": primary.status.value,
             "lastFrameAt": (
-                camera.last_frame_at.isoformat() if camera.last_frame_at else None
+                primary.last_frame_at.isoformat() if primary.last_frame_at else None
             ),
-            "framesCaptured": camera.frames_captured,
+            "framesCaptured": primary.frames_captured,
         },
+        "cameras": cameras,
         "anpr": {
             "provider": agent.provider_name,
             "minConfidence": settings.min_confidence,
             "cooldownSeconds": settings.plate_cooldown_seconds,
             "ocrProcessing": agent._ocr_busy,
-            "pendingFrames": 1 if agent._pending_frame else 0,
+            "pendingFrames": len(agent._ocr_queue),
         },
         "backend": {
             "url": settings.backend_url,

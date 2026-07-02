@@ -2,8 +2,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+from src.config.cameras import CameraConfig, resolve_cameras
 
 
 class Settings(BaseSettings):
@@ -12,15 +14,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Site identity (set via sites/<name>.env)
     site_id: str = Field(default="falun", alias="SITE_ID")
     camera_id: str = Field(default="entrance-1", alias="CAMERA_ID")
     direction: str = Field(default="entry", alias="DIRECTION")
+    cameras_config: Path | None = Field(default=None, alias="CAMERAS_CONFIG")
 
-    # RTSP camera
-    camera_rtsp_url: str = Field(alias="CAMERA_RTSP_URL")
+    # RTSP camera (legacy single-camera; optional when CAMERAS_CONFIG is set)
+    camera_rtsp_url: str = Field(default="", alias="CAMERA_RTSP_URL")
     frame_interval_ms: int = Field(default=1000, alias="FRAME_INTERVAL_MS")
     motion_gate_enabled: bool = Field(default=True, alias="MOTION_GATE_ENABLED")
     motion_threshold: float = Field(default=0.012, alias="MOTION_THRESHOLD")
@@ -71,6 +75,16 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_dir: Path = Field(default=Path("./logs"), alias="LOG_DIR")
 
+    # Populated after env load — one or more halls/cameras for this agent.
+    cameras: list[CameraConfig] = Field(default_factory=list, exclude=True)
+
+    @field_validator("cameras_config", mode="before")
+    @classmethod
+    def empty_cameras_config_to_none(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return value
+
     @model_validator(mode="after")
     def normalize_backend_url(self) -> Self:
         url = self.backend_url.rstrip("/")
@@ -79,6 +93,38 @@ class Settings(BaseSettings):
                 url = url[: -len(suffix)]
         object.__setattr__(self, "backend_url", url)
         return self
+
+    @model_validator(mode="after")
+    def resolve_camera_list(self) -> Self:
+        cameras = resolve_cameras(
+            cameras_config=self.cameras_config,
+            camera_id=self.camera_id,
+            direction=self.direction,
+            rtsp_url=self.camera_rtsp_url,
+        )
+        object.__setattr__(self, "cameras", cameras)
+
+        primary = cameras[0]
+        if self.cameras_config is not None:
+            object.__setattr__(self, "camera_id", primary.id)
+            object.__setattr__(self, "direction", primary.direction)
+            object.__setattr__(self, "camera_rtsp_url", primary.rtsp_url)
+        elif not self.camera_rtsp_url:
+            object.__setattr__(self, "camera_rtsp_url", primary.rtsp_url)
+        return self
+
+    @property
+    def is_multi_camera(self) -> bool:
+        return len(self.cameras) > 1
+
+    @property
+    def primary_camera(self) -> CameraConfig:
+        return self.cameras[0]
+
+    def frames_dir_for(self, camera_id: str) -> Path:
+        if self.is_multi_camera:
+            return self.frames_dir / camera_id
+        return self.frames_dir
 
     @classmethod
     def settings_customise_sources(
