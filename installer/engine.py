@@ -287,6 +287,53 @@ def render_env(cfg: InstallConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _subprocess_flags() -> int:
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
+
+def _cert_bundle_path(py: Path) -> str | None:
+    try:
+        proc = subprocess.run(
+            [str(py), "-c", "import certifi; print(certifi.where())"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=_subprocess_flags(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    bundle = proc.stdout.strip()
+    return bundle if bundle and Path(bundle).is_file() else None
+
+
+def _ssl_env(py: Path | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    if py is not None:
+        bundle = _cert_bundle_path(py)
+        if bundle:
+            env["SSL_CERT_FILE"] = bundle
+            env["REQUESTS_CA_BUNDLE"] = bundle
+    return env
+
+
+def _download_https(url: str, dest: Path, *, py: Path | None = None) -> None:
+    import ssl
+    import urllib.request
+
+    bundle = _cert_bundle_path(py) if py else None
+    if bundle:
+        context = ssl.create_default_context(cafile=bundle)
+    else:
+        context = ssl.create_default_context()
+    request = urllib.request.Request(url, headers={"User-Agent": "anpr-installer/1.0"})
+    with urllib.request.urlopen(request, context=context, timeout=180) as response:
+        dest.write_bytes(response.read())
+
+
 def _run(
     cmd: list[str],
     cwd: Path,
@@ -295,6 +342,7 @@ def _run(
     optional: bool = False,
     status_label: str | None = None,
     heartbeat_seconds: int = 20,
+    env: dict[str, str] | None = None,
 ) -> None:
     if status_label:
         log(status_label)
@@ -316,9 +364,8 @@ def _run(
         hb_thread = threading.Thread(target=heartbeat, daemon=True)
         hb_thread.start()
 
-    flags = 0
-    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
-        flags = subprocess.CREATE_NO_WINDOW
+    flags = _subprocess_flags()
+    run_env = env if env is not None else os.environ.copy()
     try:
         proc = subprocess.run(
             cmd,
@@ -326,6 +373,7 @@ def _run(
             capture_output=True,
             text=True,
             creationflags=flags,
+            env=run_env,
         )
     finally:
         stop.set()
@@ -343,7 +391,15 @@ def _run(
     raise RuntimeError(message)
 
 
-def _pip_install(py: Path, requirements_file: str, label: str, app_dir: Path, log: Callable[[str], None]) -> None:
+def _pip_install(
+    py: Path,
+    requirements_file: str,
+    label: str,
+    app_dir: Path,
+    log: Callable[[str], None],
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
     _run(
         [
             str(py),
@@ -358,6 +414,7 @@ def _pip_install(py: Path, requirements_file: str, label: str, app_dir: Path, lo
         app_dir,
         log,
         status_label=label,
+        env=env,
     )
 
 
@@ -420,12 +477,20 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
         log,
         optional=True,
     )
+    _run(
+        [str(py), "-m", "pip", "install", "-q", "--disable-pip-version-check", "certifi"],
+        app_dir,
+        log,
+        optional=True,
+    )
+    ssl_env = _ssl_env(py)
     _pip_install(
         py,
         "requirements.txt",
         "Steg 1/4: Grundpaket (kamera och nätverk)…",
         app_dir,
         log,
+        env=ssl_env,
     )
     _pip_install(
         py,
@@ -433,6 +498,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
         "Steg 2/4: AI för skyltigenkänning (YOLO) — största nedladdningen, kan ta 5–15 min",
         app_dir,
         log,
+        env=ssl_env,
     )
     _pip_install(
         py,
@@ -440,6 +506,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
         "Steg 3/4: OCR för registreringsskyltar…",
         app_dir,
         log,
+        env=ssl_env,
     )
 
     model = app_dir / "models" / "plate_yolov8.pt"
@@ -448,9 +515,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
         if sys.platform == "win32":
             url = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
             model.parent.mkdir(parents=True, exist_ok=True)
-            import urllib.request
-
-            urllib.request.urlretrieve(url, model)
+            _download_https(url, model, py=py)
         else:
             script = app_dir / "scripts" / "download-yolo-model.sh"
             if script.exists():

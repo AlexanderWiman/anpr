@@ -102,3 +102,33 @@ def test_render_multi_hall_writes_cameras_json():
     assert len(cameras["cameras"]) == 2
     assert cameras["cameras"][0]["id"] == "hall-1"
     assert cameras["cameras"][1]["id"] == "hall-2"
+
+
+def test_download_https_passes_ssl_context(tmp_path, monkeypatch):
+    from installer import engine
+
+    captured: dict = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b"model-bytes"
+
+    def fake_urlopen(request, context=None, timeout=None):
+        captured["context"] = context
+        return FakeResponse()
+
+    monkeypatch.setattr(engine, "_cert_bundle_path", lambda _py: "/fake/ca.pem")
+    monkeypatch.setattr("ssl.create_default_context", lambda **kwargs: "ssl-context")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    dest = tmp_path / "plate.pt"
+    engine._download_https("https://example.com/model.pt", dest, py=tmp_path / "python")
+
+    assert dest.read_bytes() == b"model-bytes"
+    assert captured["context"] == "ssl-context"

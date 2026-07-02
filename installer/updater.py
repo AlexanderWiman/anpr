@@ -49,11 +49,19 @@ def is_newer(remote: str | None, current: str | None) -> bool:
 
 
 def _http_get(url: str, *, accept: str = "application/json") -> bytes:
+    import ssl
+
     request = urllib.request.Request(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": accept},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    try:
+        import certifi
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    with urllib.request.urlopen(request, context=context, timeout=30) as response:
         return response.read()
 
 

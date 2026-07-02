@@ -9,6 +9,7 @@ numpy>=1.26.0
 
 # HTTP client
 httpx>=0.27.0
+certifi>=2024.2.2
 
 # Web server (health endpoint)
 fastapi>=0.109.0
