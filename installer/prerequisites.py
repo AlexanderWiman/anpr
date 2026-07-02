@@ -74,7 +74,7 @@ def refresh_windows_path() -> None:
     ):
         try:
             with winreg.OpenKey(hive, subkey) as key:
-                value, _ = key.QueryValueEx("Path")
+                value, _ = winreg.QueryValueEx(key, "Path")
                 if value:
                     segments.append(os.path.expandvars(value))
         except OSError:

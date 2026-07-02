@@ -66,13 +66,11 @@ def test_refresh_windows_path_merges_registry(monkeypatch, tmp_path):
         def __exit__(self, *args):
             return False
 
-        def QueryValueEx(self, _name):
-            return (str(ffmpeg_dir), 1)
-
     fake_winreg = types.ModuleType("winreg")
     fake_winreg.HKEY_CURRENT_USER = 1
     fake_winreg.HKEY_LOCAL_MACHINE = 2
     fake_winreg.OpenKey = lambda *_args, **_kwargs: FakeKey()
+    fake_winreg.QueryValueEx = lambda _key, _name: (str(ffmpeg_dir), 1)
 
     monkeypatch.setenv("PATH", "")
     with patch.dict(sys.modules, {"winreg": fake_winreg}):
