@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
+from installer.subprocess_utils import subprocess_flags, subprocess_text_kwargs
+
 
 @dataclass
 class InstallCameraConfig:
@@ -287,12 +289,6 @@ def render_env(cfg: InstallConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _subprocess_flags() -> int:
-    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
-        return subprocess.CREATE_NO_WINDOW
-    return 0
-
-
 def _cert_bundle_path(py: Path) -> str | None:
     try:
         proc = subprocess.run(
@@ -300,7 +296,8 @@ def _cert_bundle_path(py: Path) -> str | None:
             capture_output=True,
             text=True,
             timeout=30,
-            creationflags=_subprocess_flags(),
+            creationflags=subprocess_flags(),
+            **subprocess_text_kwargs(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -364,18 +361,17 @@ def _run(
         hb_thread = threading.Thread(target=heartbeat, daemon=True)
         hb_thread.start()
 
-    flags = _subprocess_flags()
+    flags = subprocess_flags()
     run_env = env if env is not None else os.environ.copy()
     run_kwargs: dict = {
         "cwd": cwd,
-        "capture_output": True,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.PIPE,
         "text": True,
         "creationflags": flags,
         "env": run_env,
+        **subprocess_text_kwargs(),
     }
-    if sys.platform == "win32":
-        run_kwargs["encoding"] = "utf-8"
-        run_kwargs["errors"] = "replace"
     try:
         proc = subprocess.run(cmd, **run_kwargs)
     finally:
@@ -383,7 +379,7 @@ def _run(
 
     if proc.returncode == 0:
         return
-    detail = (proc.stderr or proc.stdout or "").strip()
+    detail = (proc.stderr or "").strip()
     if optional:
         if detail:
             log(f"Varning: {detail[:500]}")
@@ -639,6 +635,7 @@ Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger
         capture_output=True,
         text=True,
         creationflags=flags,
+        **subprocess_text_kwargs(),
     )
     if result.returncode != 0:
         startup.mkdir(parents=True, exist_ok=True)
@@ -795,6 +792,7 @@ $s.Save()
             capture_output=True,
             text=True,
             creationflags=flags,
+            **subprocess_text_kwargs(),
         )
         if result.returncode != 0:
             desktop_cmd = desktop / "ANPR.cmd"
@@ -811,6 +809,7 @@ def _pids_listening_on_port(port: int) -> set[str]:
         capture_output=True,
         text=True,
         creationflags=flags,
+        **subprocess_text_kwargs(),
     )
     pids: set[str] = set()
     for line in result.stdout.splitlines():

@@ -10,6 +10,8 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from installer.subprocess_utils import subprocess_flags, subprocess_text_kwargs
+
 
 def _ensure_path() -> None:
     """GUI-launched apps on macOS often miss Homebrew in PATH."""
@@ -127,9 +129,7 @@ def _is_windows_store_stub(path: str) -> bool:
 
 
 def _subprocess_flags() -> int:
-    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
-        return subprocess.CREATE_NO_WINDOW
-    return 0
+    return subprocess_flags()
 
 
 def _python_version_ok(path: str) -> bool:
@@ -170,6 +170,7 @@ def find_python_executable() -> str | None:
                     text=True,
                     timeout=20,
                     creationflags=_subprocess_flags(),
+                    **subprocess_text_kwargs(),
                 )
                 if proc.returncode == 0:
                     candidates.append(proc.stdout.strip())
