@@ -173,18 +173,16 @@ def remote_update_status(current_version: str | None) -> dict:
 
 
 def _find_agent_dir(extract_root: Path) -> Path:
-    direct = extract_root / AGENT_SUBDIR
-    if (direct / "src" / "main.py").is_file():
-        return direct
-    for child in extract_root.iterdir():
-        if not child.is_dir():
+    search_roots = [extract_root, *extract_root.iterdir()]
+    for base in search_roots:
+        if not base.is_dir():
             continue
-        candidate = child / AGENT_SUBDIR
-        if (candidate / "src" / "main.py").is_file():
-            return candidate
-        if (child / "src" / "main.py").is_file() and child.name == AGENT_SUBDIR:
-            return child
-    raise FileNotFoundError("Kunde inte hitta anpr-edge-agent i nedladdningen")
+        if (base / "src" / "main.py").is_file():
+            return base
+        nested = base / AGENT_SUBDIR
+        if (nested / "src" / "main.py").is_file():
+            return nested
+    raise FileNotFoundError("Kunde inte hitta ANPR-agent i nedladdningen")
 
 
 def download_release_source(

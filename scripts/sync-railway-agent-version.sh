@@ -3,7 +3,7 @@
 #
 # Usage:
 #   export RAILWAY_TOKEN=...   # from Railway → Project → Settings → Tokens
-#   ./anpr-edge-agent/scripts/sync-railway-agent-version.sh
+#   ./scripts/sync-railway-agent-version.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

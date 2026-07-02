@@ -16,8 +16,8 @@ All bildbehandling sker lokalt. Endast registreringsnummer skickas till er centr
 
 | Mac | Windows |
 |-----|---------|
-| I **Finder**: dubbelklicka **Install ANPR** | Dubbelklicka **Installera ANPR.cmd** (i rotmappen efter uppackning) |
-| Reserv (Terminal): **launch/Installer.command** | Reserv: **anpr-edge-agent\\launch\\Installer.cmd** |
+| I **Finder**: dubbelklicka **Install ANPR** | Dubbelklicka **Installera ANPR.cmd** |
+| Reserv (Terminal): **launch/Installer.command** | Reserv: **launch\\Installer.cmd** |
 
 En **installationsguide** öppnas (som när man installerar ett vanligt program): Välkommen → Anläggning → Kamera → Token → Installera → Klart.
 
@@ -65,7 +65,7 @@ Klicka **Installera**. Första gången tar **10–15 minuter** (laddar ner AI-ko
 
 | Mac | Windows |
 |-----|---------|
-| Dubbelklicka **Install ANPR** — följ steg 1 | Dubbelklicka **launch/Installer.cmd** |
+| Dubbelklicka **Install ANPR** — följ steg 1 | Dubbelklicka **Installera ANPR.cmd** |
 | Saknas Homebrew? **scripts/install-prerequisites.sh** | Saknas winget? **launch/Install-Prerequisites.cmd** |
 
 Guiden visar status för **Python** och **ffmpeg** med knapp **Installera automatiskt** (via Homebrew eller winget).
@@ -150,7 +150,7 @@ Om knappen inte syns är datorn redan uppdaterad.
 
 **Släpp ny version:**
 
-1. Höj `__version__` i `anpr-edge-agent/src/__init__.py`
+1. Höj `__version__` i `src/__init__.py`
 2. Pusha till `main` på GitHub (`AlexanderWiman/anpr`)
 3. GitHub Actions uppdaterar automatiskt `ANPR_AGENT_LATEST_VERSION` på Railway-backend
 4. Be personal: **Install ANPR** → **Uppdatera automatiskt**
@@ -161,7 +161,7 @@ Manuellt från utvecklardator:
 
 ```bash
 export RAILWAY_TOKEN=...
-./anpr-edge-agent/scripts/sync-railway-agent-version.sh
+./scripts/sync-railway-agent-version.sh
 ```
 
 Om Railway-variablerna saknas faller installern tillbaka till GitHub `main` direkt.

@@ -11,7 +11,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "anpr-edge-agent/**"
+      - "src/**"
+      - "installer/**"
+      - "scripts/**"
+      - "launch/**"
+      - "requirements*.txt"
       - ".github/workflows/sync-railway-agent-version.yml"
   workflow_dispatch:
 
@@ -34,9 +38,9 @@ jobs:
       - name: Read agent version
         id: version
         run: |
-          VERSION=$(grep -E '^__version__\s*=' anpr-edge-agent/src/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION=$(grep -E '^__version__\s*=' src/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
-            echo "Could not read __version__ from anpr-edge-agent/src/__init__.py"
+            echo "Could not read __version__ from src/__init__.py"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
