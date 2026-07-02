@@ -615,9 +615,15 @@ async function pollPrereqInstall() {
 
   clearInterval(prereqPollTimer);
   prereqPollTimer = null;
-  await loadPrereqs();
+  if (data.check) {
+    prereqData = data.check;
+    renderPrereqs(data.check);
+    updateNextForPrereqs();
+  } else {
+    await loadPrereqs();
+  }
 
-  if (data.result?.needs_restart) {
+  if (data.result?.needs_restart && !data.check?.ok) {
     alert(
       (data.result.message || "Installation klar.") +
         "\n\nStäng guiden och starta Install ANPR igen."

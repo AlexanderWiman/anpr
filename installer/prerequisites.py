@@ -16,10 +16,7 @@ def _ensure_path() -> None:
     if sys.platform == "darwin":
         extra = ["/opt/homebrew/bin", "/usr/local/bin"]
     elif sys.platform == "win32":
-        extra = [
-            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),
-            r"C:\ffmpeg\bin",
-        ]
+        extra = _windows_extra_path_dirs()
     else:
         extra = ["/usr/local/bin"]
 
@@ -31,10 +28,69 @@ def _ensure_path() -> None:
     os.environ["PATH"] = os.pathsep.join(parts)
 
 
+def _windows_extra_path_dirs() -> list[str]:
+    local = os.environ.get("LOCALAPPDATA", "")
+    dirs = [
+        os.path.join(local, "Microsoft", "WinGet", "Links") if local else "",
+        r"C:\ffmpeg\bin",
+    ]
+    for package_bin in _winget_package_bins():
+        dirs.append(str(package_bin))
+    return dirs
+
+
+def _winget_package_bins() -> list[Path]:
+    if sys.platform != "win32":
+        return []
+    local = os.environ.get("LOCALAPPDATA", "")
+    if not local:
+        return []
+    packages = Path(local) / "Microsoft" / "WinGet" / "Packages"
+    if not packages.is_dir():
+        return []
+    bins: list[Path] = []
+    seen: set[Path] = set()
+    for exe in packages.rglob("ffmpeg.exe"):
+        parent = exe.parent
+        if parent not in seen:
+            seen.add(parent)
+            bins.append(parent)
+    return bins
+
+
+def refresh_windows_path() -> None:
+    """Reload PATH from the registry after winget/choco installers update it."""
+    if sys.platform != "win32":
+        return
+    import winreg
+
+    segments: list[str] = []
+    for hive, subkey in (
+        (winreg.HKEY_CURRENT_USER, r"Environment"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    ):
+        try:
+            with winreg.OpenKey(hive, subkey) as key:
+                value, _ = key.QueryValueEx("Path")
+                if value:
+                    segments.append(os.path.expandvars(value))
+        except OSError:
+            continue
+
+    if segments:
+        os.environ["PATH"] = os.pathsep.join(segments)
+    _ensure_path()
+
+
 _ensure_path()
 
 
 def _extra_search_dirs() -> list[Path]:
+    if sys.platform == "win32":
+        refresh_windows_path()
     dirs: list[Path] = []
     if sys.platform == "darwin":
         dirs.extend([Path("/opt/homebrew/bin"), Path("/usr/local/bin")])
@@ -43,6 +99,7 @@ def _extra_search_dirs() -> list[Path]:
         if local:
             dirs.append(Path(local) / "Microsoft" / "WinGet" / "Links")
         dirs.append(Path(r"C:\ffmpeg\bin"))
+        dirs.extend(_winget_package_bins())
     dirs.extend(Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p)
     return dirs
 
@@ -160,6 +217,8 @@ class PrereqItem:
 
 
 def get_prerequisite_status() -> list[PrereqItem]:
+    if sys.platform == "win32":
+        refresh_windows_path()
     if sys.platform == "win32":
         py_path = find_python_executable()
         py_ok = py_path is not None
@@ -293,6 +352,7 @@ def _install_ffmpeg(log: Callable[[str], None]) -> dict:
             ],
             log,
         )
+        refresh_windows_path()
         if find_ffmpeg():
             return {"ok": True, "message": "ffmpeg installerat", "needs_restart": False}
         return {
