@@ -9,6 +9,9 @@ if TYPE_CHECKING:
     from src.services.agent import AnprAgent
 
 
+from src.utils.rtsp_url import mask_stream_url
+
+
 def _camera_status(pipeline) -> dict:
     camera = pipeline.capture
     return {
@@ -17,6 +20,7 @@ def _camera_status(pipeline) -> dict:
         "direction": pipeline.direction,
         "source": camera.source_type,
         "status": camera.status.value,
+        "streamUrl": mask_stream_url(pipeline.config.rtsp_url),
         "lastFrameAt": (
             camera.last_frame_at.isoformat() if camera.last_frame_at else None
         ),

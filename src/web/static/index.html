@@ -168,6 +168,28 @@
       align-items: center;
     }
     .toolbar span { color: var(--muted); font-size: 0.8rem; }
+    .stream-list { padding: 0.75rem 1.25rem 1.25rem; }
+    .stream-row {
+      padding: 0.85rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .stream-row:last-child { border-bottom: none; }
+    .stream-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .stream-url {
+      font-family: Consolas, monospace;
+      font-size: 0.82rem;
+      word-break: break-all;
+      color: var(--text);
+    }
+    .stream-meta {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -223,6 +245,13 @@
         <div class="sub" id="last-plate-time">—</div>
       </div>
     </div>
+
+    <section id="remote-streams-section" style="display:none">
+      <h2>Stream från backend</h2>
+      <div class="stream-list" id="remote-streams-body">
+        <div class="empty">Väntar på kameror från backend…</div>
+      </div>
+    </section>
 
     <section>
       <h2>Senaste händelser</h2>
@@ -447,6 +476,28 @@
         }
         if (be.configPath) {
           document.getElementById('config-path').textContent = `Config: ${be.configPath}`;
+        }
+
+        const remoteCfg = status.remoteCameraConfig || {};
+        const remoteSection = document.getElementById('remote-streams-section');
+        const remoteBody = document.getElementById('remote-streams-body');
+        if (remoteCfg.enabled) {
+          remoteSection.style.display = 'block';
+          const remoteCameras = remoteCfg.cameras || [];
+          if (!remoteCameras.length) {
+            remoteBody.innerHTML =
+              `<div class="empty">${remoteCfg.lastError || 'Väntar på kameror från backend…'}</div>`;
+          } else {
+            remoteBody.innerHTML = remoteCameras.map((camera) =>
+              `<div class="stream-row">
+                <div class="stream-label">${camera.label || camera.id}${camera.direction ? ` · ${camera.direction}` : ''}</div>
+                <div class="stream-url">${camera.streamUrl || '—'}</div>
+              </div>`
+            ).join('') +
+            `<div class="stream-meta">Senast uppdaterad från backend: ${fmtTime(remoteCfg.lastUpdatedAt)} · uppdateras var ${remoteCfg.refreshSeconds || 60}s</div>`;
+          }
+        } else {
+          remoteSection.style.display = 'none';
         }
 
         const hb = status.heartbeat || {};

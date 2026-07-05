@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from src.config.cameras import CameraConfig
 from src.utils.logging import get_logger
-from src.utils.rtsp_url import build_rtsp_url
+from src.utils.rtsp_url import build_rtsp_url, mask_stream_url
 
 if TYPE_CHECKING:
     from src.services.agent import AnprAgent
@@ -89,10 +89,20 @@ class RemoteCameraConfigService:
 
     def status(self) -> dict:
         settings = self._agent.settings
+        cameras = [
+            {
+                "id": camera.id,
+                "label": camera.label or camera.id,
+                "direction": camera.direction,
+                "streamUrl": mask_stream_url(camera.rtsp_url),
+            }
+            for camera in settings.cameras
+        ]
         return {
             "enabled": settings.remote_camera_config_enabled,
             "refreshSeconds": settings.remote_camera_config_refresh_seconds,
-            "cameraCount": len(self._agent.settings.cameras),
+            "cameraCount": len(settings.cameras),
+            "cameras": cameras,
             "lastUpdatedAt": self._last_updated_at,
             "lastError": self._last_error,
         }

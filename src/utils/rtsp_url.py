@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, urlunparse
 
 
 def build_rtsp_url(
@@ -33,3 +33,22 @@ def build_rtsp_url(
         auth = f"{user}:{password}@" if rtsp_password else f"{user}@"
         return f"rtsp://{auth}{ip}:{port}{path}"
     return f"rtsp://{ip}:{port}{path}"
+
+
+def mask_stream_url(url: str) -> str:
+    """Return stream URL with password replaced by xxxx for safe display."""
+    cleaned = url.strip()
+    if not cleaned:
+        return ""
+
+    parsed = urlparse(cleaned)
+    if not parsed.username and not parsed.password:
+        return cleaned
+
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    auth = f"{parsed.username}:xxxx@" if parsed.username else "xxxx@"
+    netloc = f"{auth}{host}{port}"
+    return urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+    )
