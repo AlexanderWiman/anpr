@@ -8,6 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from src.config.settings import Settings
+from src.config.cameras import CameraConfig
 from src.models.event import AnprEvent
 from src.providers.factory import create_plate_provider
 from src.queue.deduplicator import PlateDeduplicator
@@ -19,6 +20,7 @@ from src.services.camera_pipeline import CameraPipeline
 from src.services.delivery import DeliveryService
 from src.services.event_history import EventHistory
 from src.services.heartbeat import HeartbeatService
+from src.services.remote_camera_config import RemoteCameraConfigService
 from src.services.web_app import create_web_app
 from src.utils.frame_cleanup import cleanup_frames
 from src.utils.logging import get_logger, setup_logging
@@ -66,6 +68,7 @@ class AnprAgent:
             settings, self._backend, self._queue, event_history=self.history
         )
         self.controller = AgentController(self)
+        self.remote_camera_config = RemoteCameraConfigService(self)
         self.heartbeat = HeartbeatService(self, self._process_started_at)
         self._ocr_busy = False
         self._ocr_queue: deque[PendingOcrFrame] = deque()
@@ -80,8 +83,41 @@ class AnprAgent:
         return self.primary_pipeline.capture
 
     @property
-    def primary_pipeline(self) -> CameraPipeline:
+    def primary_pipeline(self) -> CameraPipeline | None:
+        if not self.pipelines:
+            return None
         return next(iter(self.pipelines.values()))
+
+    def _sync_primary_camera_settings(self, cameras: list) -> None:
+        if not cameras:
+            return
+        primary = cameras[0]
+        object.__setattr__(self.settings, "cameras", cameras)
+        object.__setattr__(self.settings, "camera_id", primary.id)
+        object.__setattr__(self.settings, "direction", primary.direction)
+        object.__setattr__(self.settings, "camera_rtsp_url", primary.rtsp_url)
+
+    async def apply_camera_configs(self, cameras: list[CameraConfig]) -> None:
+        """Replace in-memory camera pipelines (used by remote config polling)."""
+        enabled = [camera for camera in cameras if camera.enabled]
+        current_ids = set(self.pipelines.keys())
+        next_ids = {camera.id for camera in enabled}
+
+        for camera_id in current_ids - next_ids:
+            pipeline = self.pipelines.pop(camera_id)
+            await pipeline.capture.disconnect()
+
+        for camera in enabled:
+            existing = self.pipelines.get(camera.id)
+            if existing is None or existing.config.rtsp_url != camera.rtsp_url:
+                if existing is not None:
+                    await existing.capture.disconnect()
+                self.pipelines[camera.id] = CameraPipeline(self.settings, camera)
+            else:
+                existing.config = camera
+
+        self._sync_primary_camera_settings(enabled)
+        await self.controller.reconcile_capture_loops()
 
     def pipeline_for(self, camera_id: str) -> CameraPipeline:
         pipeline = self.pipelines.get(camera_id)
@@ -377,6 +413,7 @@ class AnprAgent:
             )
             self.booking_hints.start_background_refresh()
             self.heartbeat.start()
+            self.remote_camera_config.start()
             if self.settings.agent_auto_start:
                 await self.controller.start()
 
@@ -391,6 +428,7 @@ class AnprAgent:
                 self._cleanup_task.cancel()
                 await asyncio.gather(self._cleanup_task, return_exceptions=True)
             await self.booking_hints.stop()
+            await self.remote_camera_config.stop()
             await self.heartbeat.stop()
             await self.controller.stop()
             await self._backend.close()

@@ -31,9 +31,10 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
     config_path = settings_env_path()
     now = datetime.now(timezone.utc)
     agent_status = agent.controller.status()
-    primary = agent.primary_pipeline.capture
     delivery = agent.delivery
     cameras = [_camera_status(pipeline) for pipeline in agent.pipelines.values()]
+    primary = agent.primary_pipeline
+    primary_capture = primary.capture if primary is not None else None
 
     return {
         "status": "ok",
@@ -47,14 +48,17 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             "cameraCount": len(cameras),
         },
         "camera": {
-            "source": primary.source_type,
-            "status": primary.status.value,
+            "source": primary_capture.source_type if primary_capture else "none",
+            "status": primary_capture.status.value if primary_capture else "unconfigured",
             "lastFrameAt": (
-                primary.last_frame_at.isoformat() if primary.last_frame_at else None
+                primary_capture.last_frame_at.isoformat()
+                if primary_capture and primary_capture.last_frame_at
+                else None
             ),
-            "framesCaptured": primary.frames_captured,
+            "framesCaptured": primary_capture.frames_captured if primary_capture else 0,
         },
         "cameras": cameras,
+        "remoteCameraConfig": agent.remote_camera_config.status(),
         "anpr": {
             "provider": agent.provider_name,
             "minConfidence": settings.min_confidence,

@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     web_history_size: int = Field(default=100, alias="WEB_HISTORY_SIZE")
     agent_auto_start: bool = Field(default=False, alias="AGENT_AUTO_START")
 
+    # Dev-only: fetch camera RTSP config from backend instead of local .env
+    remote_camera_config_enabled: bool = Field(
+        default=False, alias="REMOTE_CAMERA_CONFIG_ENABLED"
+    )
+    remote_camera_config_refresh_seconds: int = Field(
+        default=60, alias="REMOTE_CAMERA_CONFIG_REFRESH_SECONDS"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_dir: Path = Field(default=Path("./logs"), alias="LOG_DIR")
@@ -101,8 +109,12 @@ class Settings(BaseSettings):
             camera_id=self.camera_id,
             direction=self.direction,
             rtsp_url=self.camera_rtsp_url,
+            remote_camera_config_enabled=self.remote_camera_config_enabled,
         )
         object.__setattr__(self, "cameras", cameras)
+
+        if not cameras:
+            return self
 
         primary = cameras[0]
         if self.cameras_config is not None:
@@ -118,8 +130,8 @@ class Settings(BaseSettings):
         return len(self.cameras) > 1
 
     @property
-    def primary_camera(self) -> CameraConfig:
-        return self.cameras[0]
+    def primary_camera(self) -> CameraConfig | None:
+        return self.cameras[0] if self.cameras else None
 
     def frames_dir_for(self, camera_id: str) -> Path:
         if self.is_multi_camera:
@@ -169,6 +181,11 @@ class Settings(BaseSettings):
     def backend_frame_capture_url(self) -> str:
         base = self.backend_url.rstrip("/")
         return f"{base}/api/anpr/sites/{self.site_id}/frame-captures"
+
+    @property
+    def backend_cameras_url(self) -> str:
+        base = self.backend_url.rstrip("/")
+        return f"{base}/api/anpr/sites/{self.site_id}/cameras"
 
 
 def load_settings() -> Settings:

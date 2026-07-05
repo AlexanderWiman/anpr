@@ -67,6 +67,17 @@ class AgentController:
                         self._agent.delivery.run_retry_loop(), name="retry-loop"
                     ),
                 ]
+                if not self._agent.pipelines:
+                    if self._agent.settings.remote_camera_config_enabled:
+                        logger.info(
+                            "agent started without local cameras — waiting for remote config",
+                            extra={"event": "agent_started_waiting_remote_config"},
+                        )
+                    else:
+                        raise RuntimeError(
+                            "Ingen kamera konfigurerad — ange CAMERA_RTSP_URL eller CAMERAS_CONFIG"
+                        )
+
                 for pipeline in self._agent.pipelines.values():
                     camera_id = pipeline.camera_id
 
@@ -113,6 +124,56 @@ class AgentController:
                 self._error = str(exc)
                 logger.exception("agent start failed", extra={"event": "agent_error"})
                 return {"ok": False, "message": f"Start misslyckades: {exc}", **self.status()}
+
+    async def reconcile_capture_loops(self) -> None:
+        """Restart capture tasks after remote camera config changes."""
+        if self._state != AgentState.RUNNING:
+            return
+
+        capture_tasks = [
+            task for task in self._tasks if task.get_name().startswith("capture-loop-")
+        ]
+        for task in capture_tasks:
+            task.cancel()
+        if capture_tasks:
+            await asyncio.gather(*capture_tasks, return_exceptions=True)
+
+        self._tasks = [
+            task for task in self._tasks if not task.get_name().startswith("capture-loop-")
+        ]
+
+        for pipeline in self._agent.pipelines.values():
+            pipeline.reset_runtime_state()
+
+            async def frame_callback(
+                frame_path,
+                bound_camera_id=pipeline.camera_id,
+            ) -> None:
+                await self._agent.process_frame_background(
+                    frame_path,
+                    bound_camera_id,
+                )
+
+            async def run_loop(bound_pipeline=pipeline) -> None:
+                await bound_pipeline.capture.run_capture_loop(
+                    frame_callback,
+                    interval_ms=bound_pipeline.get_capture_interval_ms,
+                )
+
+            self._tasks.append(
+                asyncio.create_task(
+                    run_loop(),
+                    name=f"capture-loop-{pipeline.camera_id}",
+                )
+            )
+
+        logger.info(
+            "capture loops reconciled",
+            extra={
+                "event": "capture_loops_reconciled",
+                "camera_ids": list(self._agent.pipelines.keys()),
+            },
+        )
 
     async def stop(self) -> dict:
         async with self._lock:

@@ -75,11 +75,13 @@ def resolve_cameras(
     camera_id: str,
     direction: str,
     rtsp_url: str,
+    remote_camera_config_enabled: bool = False,
 ) -> list[CameraConfig]:
     """
     Resolve the camera list for this agent.
 
     Uses cameras.json when configured; otherwise falls back to legacy env fields.
+    When remote config is enabled, an empty local config is allowed at startup.
     """
     if cameras_config is not None:
         config_path = cameras_config.expanduser()
@@ -91,6 +93,8 @@ def resolve_cameras(
         return cameras
 
     if not rtsp_url.strip():
+        if remote_camera_config_enabled:
+            return []
         raise ValueError("CAMERA_RTSP_URL is required when CAMERAS_CONFIG is not set")
 
     return [synthesize_legacy_camera(camera_id=camera_id, direction=direction, rtsp_url=rtsp_url)]

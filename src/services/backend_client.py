@@ -157,6 +157,19 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def fetch_remote_cameras(self) -> dict | None:
+        """
+        Fetch camera configuration from backend.
+
+        Returns None when the backend feature flag is disabled (404).
+        """
+        url = self._settings.backend_cameras_url
+        response = await self._client.get(url)
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
     async def send_heartbeat(self, payload: dict) -> dict:
         """Report agent/camera/backend health for remote monitoring."""
         url = self._settings.backend_heartbeat_url
