@@ -22,6 +22,8 @@ models/*.pt
 # Media
 assets/*
 !assets/.gitkeep
+!assets/icons/
+!assets/icons/**
 *.mp4
 *.mov
 

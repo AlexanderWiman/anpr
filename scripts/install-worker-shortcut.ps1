@@ -34,6 +34,10 @@ $shortcut.TargetPath = $startScript
 $shortcut.WorkingDirectory = $InstallDir
 $shortcut.WindowStyle = 1
 $shortcut.Description = "Starta ANPR registreringsskyltssystem"
+$iconPath = Join-Path $InstallDir "assets\icons\anpr.ico"
+if (Test-Path $iconPath) {
+    $shortcut.IconLocation = "$iconPath,0"
+}
 $shortcut.Save()
 
 Write-Host "Desktop shortcut created:" -ForegroundColor Green

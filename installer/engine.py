@@ -776,7 +776,7 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         if shortcut_script.is_file():
             env = {**os.environ, "ANPR_INSTALL_DIR": str(app_dir)}
             subprocess.run(["bash", str(shortcut_script)], env=env, check=True)
-            log(f"Genväg skapad: {Path.home() / 'Desktop' / 'Start ANPR.command'}")
+            log(f"Genväg skapad: {Path.home() / 'Desktop' / 'Start ANPR.app'}")
             return
         cmd = Path.home() / "Desktop" / "Start ANPR.command"
         cmd.write_text(
@@ -815,6 +815,11 @@ def create_dashboard_shortcut(log: Callable[[str], None]) -> None:
         ps_open = str(open_script).replace("'", "''")
         ps_work = str(target).replace("'", "''")
         ps_lnk = str(lnk).replace("'", "''")
+        icon_path = target / "assets" / "icons" / "anpr.ico"
+        ps_icon = ""
+        if icon_path.is_file():
+            ps_icon_path = str(icon_path).replace("'", "''")
+            ps_icon = f"$s.IconLocation = '{ps_icon_path},0'"
         ps = f"""
 $w = New-Object -ComObject WScript.Shell
 $s = $w.CreateShortcut('{ps_lnk}')
@@ -822,6 +827,7 @@ $s.TargetPath = '{ps_open}'
 $s.WorkingDirectory = '{ps_work}'
 $s.WindowStyle = 1
 $s.Description = 'Starta ANPR och oppna kontrollpanelen'
+{ps_icon}
 $s.Save()
 """
         result = subprocess.run(

@@ -6,6 +6,7 @@ INSTALL_DIR="${HOME}/Applications/anpr-edge-agent"
 SUPPORT_DIR="${HOME}/Library/Application Support/anpr-edge-agent"
 PLIST_LABEL="com.anpr.edge-agent"
 PLIST="${HOME}/Library/LaunchAgents/${PLIST_LABEL}.plist"
+DESKTOP_APP="${HOME}/Desktop/Start ANPR.app"
 DESKTOP_CMD="${HOME}/Desktop/Start ANPR.command"
 
 log() { echo "[uninstall] $*"; }
@@ -19,6 +20,11 @@ fi
 if [[ -f "$DESKTOP_CMD" ]]; then
   rm -f "$DESKTOP_CMD"
   log "Removed desktop shortcut"
+fi
+
+if [[ -d "$DESKTOP_APP" ]]; then
+  rm -rf "$DESKTOP_APP"
+  log "Removed desktop shortcut app"
 fi
 
 read -r -p "Remove application at $INSTALL_DIR? [y/N] " ans
