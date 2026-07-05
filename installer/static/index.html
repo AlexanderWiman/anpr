@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Installera ANPR</title>
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
   <div id="server-offline-banner" class="server-offline-banner hidden" role="alert">
@@ -29,7 +29,7 @@
         <p class="hint hidden" id="prereq-restart-hint"></p>
         <div id="update-panel" class="update-panel hidden"></div>
         <div class="note">
-          Du behöver också <strong>kamera-IP</strong> och en <strong>token</strong> från IT innan du går vidare.
+          Du behöver en <strong>token</strong> från IT. Kamera-IP behövs bara om IT inte konfigurerar kameror via CRM.
         </div>
       </section>
 
@@ -41,6 +41,14 @@
           <span>Anläggning</span>
           <select id="site"></select>
         </label>
+        <label class="field remote-config-choice">
+          <span class="checkbox-row">
+            <input type="checkbox" id="remote-camera-config" checked>
+            <strong>IT konfigurerar kameror senare</strong>
+          </span>
+          <span class="hint block">Ingen kamera-IP här — agenten väntar på inställningar från CRM.</span>
+        </label>
+        <div id="local-camera-fields">
         <label class="field">
           <span>Antal hallar med kamera</span>
           <select id="hall-count">
@@ -50,6 +58,7 @@
         </label>
         <p class="hint" id="hall-count-hint"></p>
         <p class="hint hidden" id="hall-expand-hint"></p>
+        </div>
       </section>
 
       <!-- Steg 2: Kamera -->

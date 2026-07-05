@@ -115,6 +115,25 @@ function hallCount() {
   return Number($("hall-count").value || 1);
 }
 
+function remoteCameraConfigSelected() {
+  return Boolean($("remote-camera-config")?.checked);
+}
+
+function stepAfter(from) {
+  if (from === 1 && remoteCameraConfigSelected()) return 3;
+  return from + 1;
+}
+
+function stepBefore(from) {
+  if (from === 3 && remoteCameraConfigSelected()) return 1;
+  return from - 1;
+}
+
+function updateRemoteConfigUi() {
+  const remote = remoteCameraConfigSelected();
+  $("local-camera-fields")?.classList.toggle("hidden", remote);
+}
+
 function selectedSite() {
   return sites.find((s) => s.id === $("site").value);
 }
@@ -285,16 +304,22 @@ function updateCameraUi() {
 
 function fillSummary() {
   const site = selectedSite();
-  const cameras = buildInstallCameras();
-  const cameraRows = cameras
-    .map(
-      (camera) =>
-        `<dt>${camera.label}</dt><dd>${camera.camera_ip} (${CAM_LABELS[camera.camera_type] || camera.camera_type})</dd>`
-    )
-    .join("");
+  const remote = remoteCameraConfigSelected();
+  let cameraRows = "";
+  if (remote) {
+    cameraRows = `<dt>Kameror</dt><dd>Konfigureras av IT via CRM</dd>`;
+  } else {
+    const cameras = buildInstallCameras();
+    cameraRows = cameras
+      .map(
+        (camera) =>
+          `<dt>${camera.label}</dt><dd>${camera.camera_ip} (${CAM_LABELS[camera.camera_type] || camera.camera_type})</dd>`
+      )
+      .join("");
+  }
   $("summary").innerHTML = `
     <dt>Anläggning</dt><dd>${site?.label || "—"}</dd>
-    <dt>Hallar</dt><dd>${cameras.length}</dd>
+    ${remote ? "" : `<dt>Hallar</dt><dd>${hallCount()}</dd>`}
     ${cameraRows}
     <dt>Backend</dt><dd>${$("backend-url").value || "—"}</dd>
   `;
@@ -324,7 +349,7 @@ function validateCameraForm(hallIndex = 1) {
 }
 
 function validateStep(n) {
-  if (n === 2) {
+  if (n === 2 && !remoteCameraConfigSelected()) {
     if (!validateCameraForm(1)) return false;
     if (hallCount() === 2 && !validateCameraForm(2)) return false;
   }
@@ -395,6 +420,10 @@ function applySavedConfig(cfg) {
     siteEl.value = cfg.site_id;
   }
 
+  if (cfg.remote_camera_config_enabled) {
+    $("remote-camera-config").checked = true;
+  }
+
   if (cfg.hall_count) {
     $("hall-count").value = String(cfg.hall_count);
     savedHallCount = Number(cfg.hall_count);
@@ -412,6 +441,7 @@ function applySavedConfig(cfg) {
   if (cfg.backend_url) $("backend-url").value = cfg.backend_url;
   if (cfg.anpr_token) $("token").value = cfg.anpr_token;
 
+  updateRemoteConfigUi();
   updateCameraUi();
 }
 
@@ -653,7 +683,8 @@ async function startInstall() {
   const body = {
     site_id: $("site").value,
     hall_count: hallCount(),
-    cameras: buildInstallCameras(),
+    remote_camera_config_enabled: remoteCameraConfigSelected(),
+    cameras: remoteCameraConfigSelected() ? [] : buildInstallCameras(),
     backend_url: $("backend-url").value.trim(),
     anpr_token: $("token").value.trim(),
   };
@@ -704,7 +735,7 @@ $("btn-next").addEventListener("click", async () => {
       $("btn-next").disabled = false;
       if (!ok) return;
     }
-    setStep(currentStep + 1);
+    setStep(stepAfter(currentStep));
     return;
   }
   if (currentStep === 4) {
@@ -724,7 +755,7 @@ $("btn-next").addEventListener("click", async () => {
 });
 
 $("btn-back").addEventListener("click", () => {
-  if (currentStep > 0) setStep(currentStep - 1);
+  if (currentStep > 0) setStep(stepBefore(currentStep));
 });
 
 $("btn-open").addEventListener("click", () => {
@@ -795,6 +826,7 @@ document.querySelectorAll('input[name="cam2-type"]').forEach((el) => {
 });
 $("hall-count").addEventListener("change", onHallCountChanged);
 $("site").addEventListener("change", onSiteChanged);
+$("remote-camera-config")?.addEventListener("change", updateRemoteConfigUi);
 
 buildNav();
 setStep(0);
@@ -808,6 +840,7 @@ async function initWizard() {
   try {
     await Promise.all([loadPrereqs(), loadSites()]);
     await loadExistingInstall();
+    updateRemoteConfigUi();
     if (!installInfo.savedConfig) {
       updateCameraUi();
     }

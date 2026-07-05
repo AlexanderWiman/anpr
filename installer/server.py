@@ -55,7 +55,8 @@ class InstallCameraRequest(BaseModel):
 class InstallRequest(BaseModel):
     site_id: str
     hall_count: int = 1
-    cameras: list[InstallCameraRequest]
+    cameras: list[InstallCameraRequest] = Field(default_factory=list)
+    remote_camera_config_enabled: bool = False
     backend_url: str = DEFAULT_BACKEND_URL
     anpr_token: str = Field(min_length=8)
 
@@ -216,27 +217,30 @@ async def api_install(body: InstallRequest):
 
     from installer.engine import InstallCameraConfig
 
-    if not body.cameras:
-        raise HTTPException(400, "Minst en kamera krävs")
+    if not body.remote_camera_config_enabled and not body.cameras:
+        raise HTTPException(400, "Minst en kamera krävs om IT inte konfigurerar kameror senare")
 
-    cameras = [
-        InstallCameraConfig(
-            camera_id=camera.camera_id,
-            label=camera.label,
-            direction=camera.direction,
-            camera_ip=camera.camera_ip,
-            camera_type=camera.camera_type,
-            camera_port=camera.camera_port,
-            rtsp_path=camera.rtsp_path,
-            rtsp_user=camera.rtsp_user,
-            rtsp_password=camera.rtsp_password,
-        )
-        for camera in body.cameras
-    ]
+    cameras = []
+    if not body.remote_camera_config_enabled:
+        cameras = [
+            InstallCameraConfig(
+                camera_id=camera.camera_id,
+                label=camera.label,
+                direction=camera.direction,
+                camera_ip=camera.camera_ip,
+                camera_type=camera.camera_type,
+                camera_port=camera.camera_port,
+                rtsp_path=camera.rtsp_path,
+                rtsp_user=camera.rtsp_user,
+                rtsp_password=camera.rtsp_password,
+            )
+            for camera in body.cameras
+        ]
     cfg = InstallConfig(
         site_id=body.site_id,
         backend_url=body.backend_url.rstrip("/"),
         anpr_token=body.anpr_token,
+        remote_camera_config_enabled=body.remote_camera_config_enabled,
         cameras=cameras,
     )
 

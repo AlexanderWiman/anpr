@@ -36,6 +36,7 @@ class InstallConfig:
     site_id: str
     backend_url: str
     anpr_token: str
+    remote_camera_config_enabled: bool = False
     cameras: list[InstallCameraConfig] = field(default_factory=list)
     # Legacy single-camera fields (used when cameras is empty)
     camera_ip: str = ""
@@ -154,6 +155,18 @@ def read_installed_config() -> dict | None:
         if configured.is_file():
             cameras_path = configured
 
+    remote_enabled = env.get("REMOTE_CAMERA_CONFIG_ENABLED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    base = {
+        "site_id": env.get("SITE_ID", ""),
+        "backend_url": env.get("BACKEND_URL", ""),
+        "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
+        "remote_camera_config_enabled": remote_enabled,
+    }
+
     if cameras_path.is_file():
         raw = json.loads(cameras_path.read_text(encoding="utf-8"))
         cameras: list[dict] = []
@@ -170,27 +183,36 @@ def read_installed_config() -> dict | None:
                     **camera,
                 }
             )
-        if not cameras:
-            return None
-        primary = cameras[0]
-        return {
-            "site_id": env.get("SITE_ID", ""),
-            "hall_count": len(cameras),
-            "cameras": cameras,
-            "camera_id": primary["camera_id"],
-            "direction": primary.get("direction", "entry"),
-            "backend_url": env.get("BACKEND_URL", ""),
-            "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
-            **{k: primary[k] for k in primary if k not in ("camera_id", "label", "direction")},
-        }
+        if cameras:
+            primary = cameras[0]
+            return {
+                **base,
+                "hall_count": len(cameras),
+                "cameras": cameras,
+                "camera_id": primary["camera_id"],
+                "direction": primary.get("direction", "entry"),
+                **{
+                    k: primary[k]
+                    for k in primary
+                    if k not in ("camera_id", "label", "direction")
+                },
+            }
 
     camera_url = env.get("CAMERA_RTSP_URL", "")
     if not camera_url:
+        if remote_enabled and base["site_id"]:
+            return {
+                **base,
+                "hall_count": 1,
+                "cameras": [],
+                "camera_id": env.get("CAMERA_ID", "entrance-1"),
+                "direction": env.get("DIRECTION", "entry"),
+            }
         return None
 
     camera = decode_camera_url(camera_url)
     return {
-        "site_id": env.get("SITE_ID", ""),
+        **base,
         "hall_count": 1,
         "cameras": [
             {
@@ -202,8 +224,6 @@ def read_installed_config() -> dict | None:
         ],
         "camera_id": env.get("CAMERA_ID", "hall-1"),
         "direction": env.get("DIRECTION", "entry"),
-        "backend_url": env.get("BACKEND_URL", ""),
-        "anpr_token": env.get("ANPR_AGENT_TOKEN", ""),
         **camera,
     }
 
@@ -230,23 +250,35 @@ def render_env(cfg: InstallConfig) -> str:
             return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
         return value
 
-    cameras = cfg.resolved_cameras()
-    primary = cameras[0]
-    camera_url = build_camera_url(primary)
+    cameras = [] if cfg.remote_camera_config_enabled else cfg.resolved_cameras()
     storage = support_dir() / "storage"
     logs = support_dir() / "logs"
     yolo = install_dir() / "models" / "plate_yolov8.pt"
     cameras_file = support_dir() / "cameras.json"
 
-    lines = [
-        f"SITE_ID={cfg.site_id}",
-        f"CAMERA_ID={primary.camera_id}",
-        f"DIRECTION={primary.direction}",
-    ]
-    if len(cameras) > 1:
-        lines.append(f"CAMERAS_CONFIG={cameras_file}")
+    if cfg.remote_camera_config_enabled or not cameras:
+        primary_id = cfg.camera_id or "entrance-1"
+        lines = [
+            f"SITE_ID={cfg.site_id}",
+            f"CAMERA_ID={primary_id}",
+            f"DIRECTION={cfg.direction or 'entry'}",
+            "",
+            "REMOTE_CAMERA_CONFIG_ENABLED=true",
+            "REMOTE_CAMERA_CONFIG_REFRESH_SECONDS=60",
+        ]
     else:
-        lines.append(f"CAMERA_RTSP_URL={camera_url}")
+        primary = cameras[0]
+        camera_url = build_camera_url(primary)
+        lines = [
+            f"SITE_ID={cfg.site_id}",
+            f"CAMERA_ID={primary.camera_id}",
+            f"DIRECTION={primary.direction}",
+        ]
+        if len(cameras) > 1:
+            lines.append(f"CAMERAS_CONFIG={cameras_file}")
+        else:
+            lines.append(f"CAMERA_RTSP_URL={camera_url}")
+
     lines.extend(
         [
         "",
@@ -561,11 +593,16 @@ def write_config(cfg: InstallConfig, log: Callable[[str], None]) -> Path:
     env_path = support / ".env"
     env_text = render_env(cfg)
     env_path.write_text(env_text, encoding="utf-8")
-    cameras = cfg.resolved_cameras()
-    if len(cameras) > 1:
-        cameras_path = support / "cameras.json"
-        cameras_path.write_text(render_cameras_json(cameras), encoding="utf-8")
-        log(f"Kameror sparade: {cameras_path}")
+    cameras_path = support / "cameras.json"
+    if cfg.remote_camera_config_enabled:
+        if cameras_path.is_file():
+            cameras_path.unlink()
+            log("Tog bort lokal cameras.json — kameror hämtas från CRM")
+    else:
+        cameras = cfg.resolved_cameras()
+        if len(cameras) > 1:
+            cameras_path.write_text(render_cameras_json(cameras), encoding="utf-8")
+            log(f"Kameror sparade: {cameras_path}")
     log(f"Konfiguration sparad: {env_path}")
     return env_path
 

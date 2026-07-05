@@ -267,6 +267,24 @@ h1 {
   margin-top: 8px;
 }
 
+.hint.block {
+  display: block;
+  margin-top: 6px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.remote-config-choice {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
 .note {
   background: #eff6ff;
   border: 1px solid #bfdbfe;
