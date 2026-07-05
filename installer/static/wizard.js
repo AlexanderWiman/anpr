@@ -758,23 +758,28 @@ $("btn-back").addEventListener("click", () => {
   if (currentStep > 0) setStep(stepBefore(currentStep));
 });
 
-$("btn-open").addEventListener("click", () => {
-  openAgentDashboard();
-});
-
 async function waitForAgentDashboard() {
   const lead = $("done-lead");
+  const openLink = $("btn-open");
   for (let i = 0; i < 120; i += 1) {
-    try {
-      const res = await fetch("http://127.0.0.1:8080/api/version", { cache: "no-store" });
-      if (res.ok) {
+    const result = await installerFetch("/api/dashboard/status", { cache: "no-store" });
+    if (result.ok && result.res?.ok) {
+      let data;
+      try {
+        data = await result.res.json();
+      } catch {
+        data = null;
+      }
+      if (data?.ready) {
         if (lead) {
           lead.textContent = "ANPR är installerat och körs.";
         }
-        window.open("http://127.0.0.1:8080", "_blank");
+        if (openLink && data.url) {
+          openLink.href = data.url;
+        }
         return;
       }
-    } catch (_) {}
+    }
     if (lead && i > 2) {
       lead.textContent = "ANPR startar — väntar på kontrollpanelen…";
     }
@@ -782,26 +787,8 @@ async function waitForAgentDashboard() {
   }
   if (lead) {
     lead.textContent =
-      "Installation klar. Starta via Start ANPR på skrivbordet om kontrollpanelen inte öppnas.";
+      "Installation klar. Starta via Start ANPR på skrivbordet om kontrollpanelen inte svarar.";
   }
-}
-
-async function openAgentDashboard() {
-  for (let i = 0; i < 30; i += 1) {
-    try {
-      const res = await fetch("http://127.0.0.1:8080/api/version", { cache: "no-store" });
-      if (res.ok) {
-        window.open("http://127.0.0.1:8080", "_blank");
-        return;
-      }
-    } catch (_) {}
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  alert(
-    "ANPR svarar inte på http://127.0.0.1:8080.\n\n" +
-      "Dubbelklicka Start ANPR på skrivbordet och lämna terminalfönstret öppet.\n\n" +
-      "Logg: ~/Library/Application Support/anpr-edge-agent/logs/launchd-stderr.log",
-  );
 }
 
 document.querySelectorAll('input[name="cam-type"]').forEach((el) => {

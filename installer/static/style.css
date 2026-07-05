@@ -496,6 +496,12 @@ h1 {
   transition: background 0.15s, opacity 0.15s;
 }
 
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;

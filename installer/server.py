@@ -209,6 +209,17 @@ async def api_install_status():
         return dict(_state)
 
 
+@app.get("/api/dashboard/status")
+async def api_dashboard_status():
+    from installer.engine import agent_is_running
+
+    port = 8080
+    return {
+        "ready": agent_is_running(port),
+        "url": f"http://127.0.0.1:{port}/",
+    }
+
+
 @app.post("/api/install")
 async def api_install(body: InstallRequest):
     with _lock:

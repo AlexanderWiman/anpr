@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Installera ANPR</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
   <div id="server-offline-banner" class="server-offline-banner hidden" role="alert">
@@ -202,7 +202,13 @@
         <h1>Klart!</h1>
         <p class="lead" id="done-lead">ANPR är installerat. Kontrollpanelen öppnas när agenten svarar.</p>
         <p class="hint">Dubbelklicka <strong>Start ANPR</strong> på skrivbordet om sidan inte laddas — lämna terminalfönstret öppet.</p>
-        <button type="button" class="btn primary" id="btn-open">Öppna ANPR</button>
+        <a
+          class="btn primary"
+          id="btn-open"
+          href="http://127.0.0.1:8080/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Öppna ANPR</a>
       </section>
 
       <footer class="footer">
@@ -211,6 +217,6 @@
       </footer>
     </main>
   </div>
-  <script src="/static/wizard.js?v=13"></script>
+  <script src="/static/wizard.js?v=14"></script>
 </body>
 </html>
