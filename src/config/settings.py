@@ -47,7 +47,7 @@ class Settings(BaseSettings):
         default=600, alias="BOOKING_HINTS_REFRESH_SECONDS"
     )
     heartbeat_enabled: bool = Field(default=True, alias="HEARTBEAT_ENABLED")
-    heartbeat_interval_seconds: int = Field(default=60, alias="HEARTBEAT_INTERVAL_SECONDS")
+    heartbeat_interval_seconds: int = Field(default=30, alias="HEARTBEAT_INTERVAL_SECONDS")
 
     # YOLO + OCR
     min_confidence: float = Field(default=0.55, alias="MIN_CONFIDENCE")

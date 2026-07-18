@@ -1,6 +1,6 @@
 # Backend: ANPR agent heartbeat (remote monitoring)
 
-Edge agents POST a health snapshot every 60s (configurable via `HEARTBEAT_INTERVAL_SECONDS`).
+Edge agents POST a health snapshot every 30s (configurable via `HEARTBEAT_INTERVAL_SECONDS`).
 Staff can see whether the site PC, camera, and backend link are OK without VPN to `127.0.0.1:8080`.
 
 ## Agent → backend

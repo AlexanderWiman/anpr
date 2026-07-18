@@ -314,6 +314,9 @@ def render_env(cfg: InstallConfig) -> str:
         "HEALTH_PORT=8080",
         "AGENT_AUTO_START=true",
         "",
+        "HEARTBEAT_ENABLED=true",
+        "HEARTBEAT_INTERVAL_SECONDS=30",
+        "",
         f"LOG_DIR={logs}",
         "LOG_LEVEL=INFO",
         ]

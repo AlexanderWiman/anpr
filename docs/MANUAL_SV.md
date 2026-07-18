@@ -115,7 +115,7 @@ Agenten skickar en **heartbeat** till backend var 60:e sekund (så fort programm
 Inställningar i `data\.env`:
 
 - `HEARTBEAT_ENABLED=true` (standard)
-- `HEARTBEAT_INTERVAL_SECONDS=60`
+- `HEARTBEAT_INTERVAL_SECONDS=30`
 
 ---
 

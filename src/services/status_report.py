@@ -1,5 +1,7 @@
 """Shared agent status snapshot for local dashboard and remote heartbeat."""
 
+import platform
+import socket
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -10,6 +12,17 @@ if TYPE_CHECKING:
 
 
 from src.utils.rtsp_url import mask_stream_url
+
+
+def _host_info() -> dict:
+    try:
+        hostname = socket.gethostname().strip() or None
+    except OSError:
+        hostname = None
+    return {
+        "hostname": hostname,
+        "platform": platform.system() or None,
+    }
 
 
 def _camera_status(pipeline) -> dict:
@@ -44,6 +57,7 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
         "status": "ok",
         "version": __version__,
         "reportedAt": now.isoformat(),
+        "host": _host_info(),
         "agent": agent_status,
         "site": {
             "siteId": settings.site_id,

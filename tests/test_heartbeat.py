@@ -61,10 +61,12 @@ def test_heartbeat_builds_payload_from_agent():
     agent.primary_pipeline.camera_id = "entrance-1"
     agent.primary_pipeline.label = "entrance-1"
     agent.primary_pipeline.direction = "entry"
+    agent.primary_pipeline.config.rtsp_url = "rtsp://127.0.0.1/stream1"
     agent.pipelines = {"entrance-1": agent.primary_pipeline}
     agent.provider_name = "yolo_ocr"
     agent._ocr_busy = False
     agent._ocr_queue = deque()
+    agent.remote_camera_config.status.return_value = {"enabled": False}
     agent.delivery.refresh_backend_status = AsyncMock()
     agent.delivery.backend_status.as_dict.return_value = {
         "ok": True,
@@ -75,6 +77,7 @@ def test_heartbeat_builds_payload_from_agent():
     agent.delivery.queue_size = 0
     agent.delivery.stats = {"deliveries_succeeded": 1, "deliveries_failed": 0}
     agent.booking_hints.status.return_value = {"enabled": True, "plateCount": 3}
+    agent.heartbeat.status.return_value = {"enabled": True, "intervalSeconds": 30}
     agent.deduplicator.last_detection = None
     agent.backend.send_heartbeat = AsyncMock(return_value={"ok": True})
 
@@ -86,3 +89,5 @@ def test_heartbeat_builds_payload_from_agent():
     assert payload["site"]["siteId"] == "falun"
     assert payload["camera"]["status"] == "connected"
     assert payload["agent"]["state"] == "running"
+    assert isinstance(payload["host"]["hostname"], str)
+    assert payload["host"]["hostname"]
