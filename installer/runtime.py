@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -75,4 +74,10 @@ def ensure_installer_venv(log: Callable[[str], None]) -> None:
             log("Uppdaterar installationsmiljö...")
             _pip_install(py, "--upgrade", "pip", *_INSTALLER_DEPS)
 
-    os.execv(str(py), [str(py), "-m", "installer", *sys.argv[1:]])
+    # Use subprocess instead of os.execv — on Windows, execv breaks when the
+    # path contains spaces (e.g. C:\Users\Olles Falun\...).
+    result = subprocess.run(
+        [str(py), "-m", "installer", *sys.argv[1:]],
+        check=False,
+    )
+    raise SystemExit(result.returncode)

@@ -139,7 +139,11 @@ def _python_version_ok(path: str) -> bool:
         return False
     try:
         proc = subprocess.run(
-            [path, "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"],
+            [
+                path,
+                "-c",
+                "import sys; v=sys.version_info; raise SystemExit(0 if (3, 11) <= v < (3, 14) else 1)",
+            ],
             capture_output=True,
             timeout=20,
             creationflags=_subprocess_flags(),
@@ -151,7 +155,7 @@ def _python_version_ok(path: str) -> bool:
 
 def find_python_executable() -> str | None:
     if sys.platform != "win32":
-        if sys.version_info >= (3, 11) and not _is_windows_store_stub(sys.executable):
+        if (3, 11) <= sys.version_info < (3, 14) and not _is_windows_store_stub(sys.executable):
             return sys.executable
         for name in ("python3", "python"):
             found = find_executable(name)
@@ -184,9 +188,11 @@ def find_python_executable() -> str | None:
 
     local = os.environ.get("LOCALAPPDATA", "")
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    for version in ("313", "312", "311"):
+    for version in ("312", "313", "311"):
         candidates.append(os.path.join(local, "Programs", "Python", f"Python{version}", "python.exe"))
         candidates.append(os.path.join(program_files, f"Python{version}", "python.exe"))
+        minor = version[1:]  # "12" from "312"
+        candidates.append(os.path.join(local, "Python", f"pythoncore-3.{minor}-64", "python.exe"))
 
     seen: set[str] = set()
     for path in candidates:
@@ -226,13 +232,13 @@ def get_prerequisite_status() -> list[PrereqItem]:
         if py_ok:
             py_msg = f"Python — OK"
         else:
-            py_msg = "Python 3.11+ saknas (Microsoft Store-alias räknas inte som Python)"
+            py_msg = "Python 3.11–3.13 saknas (Microsoft Store-alias räknas inte; undvik 3.14+)"
     else:
-        py_ok = sys.version_info >= (3, 11)
+        py_ok = (3, 11) <= sys.version_info < (3, 14)
         if py_ok:
             py_msg = f"Python {sys.version_info.major}.{sys.version_info.minor} — OK"
         else:
-            py_msg = "Python 3.11+ saknas"
+            py_msg = "Python 3.11–3.13 saknas (undvik 3.14+)"
 
     ff_path = find_ffmpeg()
     ff_ok = ff_path is not None
@@ -248,15 +254,15 @@ def get_prerequisite_status() -> list[PrereqItem]:
     return [
         PrereqItem(
             id="python",
-            name="Python 3.11+",
+            name="Python 3.11–3.13",
             ok=py_ok,
             message=py_msg,
             can_auto_install=py_auto and not py_ok,
-            manual_url="https://www.python.org/downloads/",
+            manual_url="https://www.python.org/downloads/release/python-31210/",
             manual_hint=(
-                "Windows: kryssa i «Add Python to PATH» eller stäng av Store-alias under Appkörningsalias"
+                "Windows: installera Python 3.12, kryssa i «Add Python to PATH». Undvik 3.14."
                 if sys.platform == "win32"
-                else "Mac: ladda ner installationspaketet från python.org"
+                else "Mac: ladda ner Python 3.12 från python.org (undvik 3.14)"
             ),
         ),
         PrereqItem(

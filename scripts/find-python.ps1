@@ -20,7 +20,8 @@ function Test-RealPython([string]$Path) {
         $parts = $version.Trim().Split('.')
         $major = [int]$parts[0]
         $minor = [int]$parts[1]
-        return ($major -gt 3) -or ($major -eq 3 -and $minor -ge 11)
+        # Prefer 3.11–3.13. Python 3.14+ often lacks wheels for YOLO/torch.
+        return ($major -eq 3 -and $minor -ge 11 -and $minor -le 13)
     } catch {
         return $false
     }
@@ -55,11 +56,13 @@ function Get-PythonCandidates {
 
     $localApp = $env:LOCALAPPDATA
     $programFiles = ${env:ProgramFiles}
-    foreach ($ver in @('313', '312', '311')) {
+    foreach ($ver in @('312', '313', '311')) {
         Add-Candidate "$localApp\Programs\Python\Python$ver\python.exe"
         if ($programFiles) {
             Add-Candidate "$programFiles\Python$ver\python.exe"
         }
+        # Python install manager layout (python.org):
+        Add-Candidate "$localApp\Python\pythoncore-3.$($ver.Substring(1))-64\python.exe"
     }
 
     return $list

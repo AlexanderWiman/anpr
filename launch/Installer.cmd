@@ -8,7 +8,7 @@ for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass
 
 if not defined PYTHON_EXE (
   echo.
-  echo  Python 3.11+ saknas. Forsoker installera automatiskt...
+  echo  Python 3.11-3.13 saknas. Forsoker installera Python 3.12 automatiskt...
   echo.
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\scripts\find-python.ps1" -Install
   for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\scripts\find-python.ps1"`) do set "PYTHON_EXE=%%P"
@@ -20,8 +20,9 @@ if not defined PYTHON_EXE (
   echo.
   echo  Gor sa har:
   echo    1. Kor launch\Install-Prerequisites.cmd
-  echo    2. Eller ladda ner Python fran https://www.python.org/downloads/
+  echo    2. Eller ladda ner Python 3.12 fran https://www.python.org/downloads/release/python-31210/
   echo       Kryssa i "Add Python to PATH" under installationen.
+  echo       Viktigt: undvik Python 3.14 — ANPR kraver 3.11-3.13.
   echo    3. Stang av Microsoft Store-alias om det stör:
   echo       Installningar - Appar - Avancerade appinstallningar - appkorningalias
   echo       Stang av python.exe och python3.exe dar.
