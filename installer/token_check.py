@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.request
+
+
+def _ssl_context() -> ssl.SSLContext:
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def validate_backend_credentials(
@@ -28,7 +38,11 @@ def validate_backend_credentials(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=timeout_seconds,
+            context=_ssl_context(),
+        ) as response:
             if 200 <= response.status < 300:
                 return True, "Token godkänd av backend"
     except urllib.error.HTTPError as exc:
@@ -53,5 +67,7 @@ def validate_backend_credentials(
         return False, f"Backend svarade med fel {exc.code}"
     except urllib.error.URLError as exc:
         return False, f"Kan inte nå backend: {exc.reason}"
+    except ssl.SSLError as exc:
+        return False, f"Kan inte nå backend (SSL): {exc}"
 
     return False, "Kunde inte verifiera token mot backend"

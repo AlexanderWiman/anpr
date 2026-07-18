@@ -11,6 +11,7 @@ _INSTALLER_DEPS = (
     "fastapi",
     "uvicorn",
     "httpx",
+    "certifi",
     "pydantic",
     "pydantic-settings",
     "python-dotenv",
