@@ -27,12 +27,14 @@ def _host_info() -> dict:
 
 def _camera_status(pipeline) -> dict:
     camera = pipeline.capture
+    status_message = getattr(camera, "status_message", None)
     return {
         "id": pipeline.camera_id,
         "label": pipeline.label,
         "direction": pipeline.direction,
         "source": camera.source_type,
         "status": camera.status.value,
+        "statusMessage": status_message,
         "streamUrl": mask_stream_url(pipeline.config.rtsp_url),
         "lastFrameAt": (
             camera.last_frame_at.isoformat() if camera.last_frame_at else None
@@ -68,6 +70,11 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
         "camera": {
             "source": primary_capture.source_type if primary_capture else "none",
             "status": primary_capture.status.value if primary_capture else "unconfigured",
+            "statusMessage": (
+                primary_capture.status_message
+                if primary_capture and hasattr(primary_capture, "status_message")
+                else None
+            ),
             "lastFrameAt": (
                 primary_capture.last_frame_at.isoformat()
                 if primary_capture and primary_capture.last_frame_at

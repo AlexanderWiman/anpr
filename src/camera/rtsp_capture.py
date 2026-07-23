@@ -8,6 +8,7 @@ from src.camera.frame_io import frame_filename, save_frame
 from src.camera.base import CameraStatus, FrameCaptureService
 from src.config.cameras import CameraConfig
 from src.config.settings import Settings
+from src.camera.status_messages import camera_status_message
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +28,7 @@ class RTSPCaptureService(FrameCaptureService):
         self._status = CameraStatus.DISCONNECTED
         self._last_frame_at: datetime | None = None
         self._frames_captured = 0
+        self._last_error_reason: str | None = None
         self._lock = asyncio.Lock()
 
     @property
@@ -44,6 +46,19 @@ class RTSPCaptureService(FrameCaptureService):
     @property
     def frames_captured(self) -> int:
         return self._frames_captured
+
+    @property
+    def last_error_reason(self) -> str | None:
+        return self._last_error_reason
+
+    @property
+    def status_message(self) -> str | None:
+        return camera_status_message(
+            status=self._status.value,
+            reason=self._last_error_reason,
+            rtsp_url=self._camera.rtsp_url,
+            timeout_ms=self._settings.rtsp_connect_timeout_ms,
+        )
 
     @property
     def camera_id(self) -> str:
@@ -66,9 +81,16 @@ class RTSPCaptureService(FrameCaptureService):
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return cap
 
+    def _set_error(self, reason: str) -> None:
+        self._last_error_reason = reason
+
+    def _clear_error(self) -> None:
+        self._last_error_reason = None
+
     async def connect(self) -> bool:
         async with self._lock:
             self._status = CameraStatus.CONNECTING
+            self._last_error_reason = "connecting"
             logger.info(
                 "connecting to camera",
                 extra={
@@ -88,10 +110,12 @@ class RTSPCaptureService(FrameCaptureService):
                 )
             except asyncio.TimeoutError:
                 self._status = CameraStatus.ERROR
+                self._set_error("connection_timeout")
                 logger.error(
                     "camera connection timeout",
                     extra={
                         "event": "camera_error",
+                        "reason": "connection_timeout",
                         "timeout_ms": self._settings.rtsp_connect_timeout_ms,
                     },
                 )
@@ -99,9 +123,10 @@ class RTSPCaptureService(FrameCaptureService):
 
             if not cap.isOpened():
                 self._status = CameraStatus.ERROR
+                self._set_error("stream_not_opened")
                 logger.error(
                     "camera connection failed",
-                    extra={"event": "camera_error", "reason": "stream not opened"},
+                    extra={"event": "camera_error", "reason": "stream_not_opened"},
                 )
                 return False
 
@@ -109,9 +134,10 @@ class RTSPCaptureService(FrameCaptureService):
             if not ret:
                 cap.release()
                 self._status = CameraStatus.ERROR
+                self._set_error("no_frame_received")
                 logger.error(
                     "camera connection failed",
-                    extra={"event": "camera_error", "reason": "no frame received"},
+                    extra={"event": "camera_error", "reason": "no_frame_received"},
                 )
                 return False
 
@@ -120,6 +146,7 @@ class RTSPCaptureService(FrameCaptureService):
 
             self._capture = cap
             self._status = CameraStatus.CONNECTED
+            self._clear_error()
             logger.info(
                 "camera connected",
                 extra={
@@ -136,6 +163,7 @@ class RTSPCaptureService(FrameCaptureService):
                 self._capture.release()
                 self._capture = None
             self._status = CameraStatus.DISCONNECTED
+            self._clear_error()
             logger.info("camera disconnected", extra={"event": "camera_disconnected"})
 
     async def capture_frame(self, output_dir: Path) -> Path | None:
@@ -150,17 +178,19 @@ class RTSPCaptureService(FrameCaptureService):
                     timeout=self._settings.rtsp_connect_timeout_ms / 1000,
                 )
             except asyncio.TimeoutError:
+                self._set_error("read_timeout")
                 logger.warning(
                     "frame read timeout",
-                    extra={"event": "camera_error", "reason": "read timeout"},
+                    extra={"event": "camera_error", "reason": "read_timeout"},
                 )
                 self._status = CameraStatus.RECONNECTING
                 return None
 
             if not ret or frame is None:
+                self._set_error("empty_frame")
                 logger.warning(
                     "frame read failed",
-                    extra={"event": "camera_error", "reason": "empty frame"},
+                    extra={"event": "camera_error", "reason": "empty_frame"},
                 )
                 self._status = CameraStatus.RECONNECTING
                 return None
@@ -181,6 +211,7 @@ class RTSPCaptureService(FrameCaptureService):
 
             self._last_frame_at = datetime.now(timezone.utc)
             self._frames_captured += 1
+            self._clear_error()
             logger.debug(
                 "frame captured",
                 extra={

@@ -352,6 +352,13 @@
       font-size: 0.72rem;
       color: var(--text-tertiary);
       margin-top: 4px;
+      line-height: 1.35;
+    }
+
+    .camera-tile.error .camera-tile-time,
+    .camera-tile.reconnecting .camera-tile-time,
+    .camera-tile.connecting .camera-tile-time {
+      color: var(--amber);
     }
 
     .plate-display {
@@ -731,9 +738,13 @@
         const stateText = running
           ? (cameraStateLabels[status] || status)
           : 'Inte startad';
-        const timeText = running && camera.lastFrameAt
-          ? `Senast ${fmtTime(camera.lastFrameAt)}`
-          : (running ? 'Ingen bild ännu' : 'Agent stoppad');
+        const timeText = !running
+          ? 'Agent stoppad'
+          : camera.statusMessage
+            ? camera.statusMessage
+            : camera.lastFrameAt
+              ? `Senast ${fmtTime(camera.lastFrameAt)}`
+              : 'Ingen bild ännu';
 
         return `
           <div class="camera-tile ${status}">
