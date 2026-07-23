@@ -981,9 +981,12 @@ def start_agent(app_dir: Path, log: Callable[[str], None]) -> None:
             time.sleep(2)
     elif sys.platform == "win32":
         run = app_dir / "scripts" / "run-agent.cmd"
+        env = os.environ.copy()
+        env["ANPR_INSTALL_DIR"] = str(app_dir)
         subprocess.Popen(
             ["cmd", "/c", str(run)],
             cwd=app_dir,
+            env=env,
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
         )
         time.sleep(3)
@@ -1008,6 +1011,7 @@ def is_installed() -> bool:
 
 def install_status_payload() -> dict:
     from installer.updater import display_version, is_newer, remote_update_status
+    from installer.windows_paths import localappdata_install_dir, programdata_install_dir
 
     installed = is_installed()
     target = install_dir()
@@ -1027,6 +1031,16 @@ def install_status_payload() -> dict:
         current and remote_version and is_newer(current, remote_version)
     )
 
+    marker = Path("src") / "main.py"
+    local_root = localappdata_install_dir()
+    programdata_root = programdata_install_dir()
+    dual_install = (
+        sys.platform == "win32"
+        and (local_root / marker).is_file()
+        and (programdata_root / marker).is_file()
+        and local_root != programdata_root
+    )
+
     payload: dict = {
         "installed": installed,
         "currentVersion": current,
@@ -1036,6 +1050,7 @@ def install_status_payload() -> dict:
         "remoteUpdateAvailable": remote_update,
         "newerThanServer": newer_than_server,
         "installDir": str(target),
+        "dualInstallWarning": dual_install,
         **remote,
         "remoteVersion": remote_version,
     }

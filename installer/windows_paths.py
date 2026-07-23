@@ -48,22 +48,22 @@ def recommended_windows_install_dir() -> Path:
 
 
 def resolve_windows_install_dir() -> Path:
-    local = localappdata_install_dir()
     programdata = programdata_install_dir()
-    if (local / _INSTALL_MARKER).is_file():
-        return local
+    local = localappdata_install_dir()
     if (programdata / _INSTALL_MARKER).is_file():
         return programdata
+    if (local / _INSTALL_MARKER).is_file():
+        return local
     return recommended_windows_install_dir()
 
 
 def resolve_windows_support_dir(install_root: Path) -> Path:
-    local_support = localappdata_install_dir() / "data"
     programdata_support = programdata_install_dir() / "data"
-    if (local_support / ".env").is_file():
-        return local_support
+    local_support = localappdata_install_dir() / "data"
     if (programdata_support / ".env").is_file():
         return programdata_support
+    if (local_support / ".env").is_file():
+        return local_support
     return install_root / "data"
 
 

@@ -25,9 +25,23 @@ def test_recommended_install_dir_uses_programdata_on_windows(monkeypatch):
     )
 
 
-def test_resolve_install_dir_prefers_existing_localappdata(monkeypatch, tmp_path):
+def test_resolve_install_dir_prefers_programdata_when_both_exist(monkeypatch, tmp_path):
     local = tmp_path / "local" / "anpr-edge-agent"
     programdata = tmp_path / "programdata" / "anpr-edge-agent"
+    for root in (local, programdata):
+        root.mkdir(parents=True)
+        (root / "src").mkdir()
+        (root / "src" / "main.py").write_text("", encoding="utf-8")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("ProgramData", str(tmp_path / "programdata"))
+
+    assert wp.resolve_windows_install_dir() == programdata
+    assert wp.resolve_windows_support_dir(programdata) == programdata / "data"
+
+
+def test_resolve_install_dir_falls_back_to_localappdata(monkeypatch, tmp_path):
+    local = tmp_path / "local" / "anpr-edge-agent"
     local.mkdir(parents=True)
     (local / "src").mkdir()
     (local / "src" / "main.py").write_text("", encoding="utf-8")
@@ -36,4 +50,3 @@ def test_resolve_install_dir_prefers_existing_localappdata(monkeypatch, tmp_path
     monkeypatch.setenv("ProgramData", str(tmp_path / "programdata"))
 
     assert wp.resolve_windows_install_dir() == local
-    assert wp.resolve_windows_support_dir(local) == local / "data"
