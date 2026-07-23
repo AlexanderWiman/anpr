@@ -51,3 +51,27 @@ jobs:
           name: ANPR Edge Agent ${{ steps.meta.outputs.agent_version }} (${{ steps.meta.outputs.tag }})
           files: ${{ steps.meta.outputs.zip }}
           generate_release_notes: true
+
+      - name: Install Railway CLI
+        if: ${{ secrets.RAILWAY_TOKEN != '' || secrets.RAILWAY_API_TOKEN != '' }}
+        run: npm install -g @railway/cli@4
+
+      - name: Update Railway download URL
+        if: ${{ secrets.RAILWAY_TOKEN != '' || secrets.RAILWAY_API_TOKEN != '' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: cd64c4cd-2eba-4cd5-b258-bb71274bdb50
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP="${{ steps.meta.outputs.zip }}"
+          VERSION="${{ steps.meta.outputs.agent_version }}"
+          DOWNLOAD_URL="https://github.com/AlexanderWiman/anpr/releases/download/${TAG}/${ZIP}"
+          railway variable set \
+            "ANPR_AGENT_LATEST_VERSION=${VERSION}" \
+            "ANPR_AGENT_DOWNLOAD_URL=${DOWNLOAD_URL}" \
+            --service backend \
+            --environment production \
+            --project "${RAILWAY_PROJECT_ID}"
+          echo "Railway backend: version ${VERSION}, download ${DOWNLOAD_URL}"

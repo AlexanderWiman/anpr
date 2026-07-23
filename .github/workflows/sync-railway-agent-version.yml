@@ -27,7 +27,6 @@ env:
   RAILWAY_PROJECT_ID: cd64c4cd-2eba-4cd5-b258-bb71274bdb50
   RAILWAY_ENVIRONMENT: production
   RAILWAY_SERVICE: backend
-  ANPR_AGENT_DOWNLOAD_URL: https://github.com/AlexanderWiman/anpr/archive/refs/heads/main.zip
 
 jobs:
   sync:
@@ -64,7 +63,6 @@ jobs:
           set -euo pipefail
           railway variable set \
             "ANPR_AGENT_LATEST_VERSION=${{ steps.version.outputs.version }}" \
-            "ANPR_AGENT_DOWNLOAD_URL=${{ env.ANPR_AGENT_DOWNLOAD_URL }}" \
             --service "${{ env.RAILWAY_SERVICE }}" \
             --environment "${{ env.RAILWAY_ENVIRONMENT }}" \
             --project "${{ env.RAILWAY_PROJECT_ID }}"
