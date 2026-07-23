@@ -88,6 +88,7 @@ function setStep(n) {
         : "Fortsätt";
   $("btn-next").classList.toggle("hidden", n === 5);
 
+  if (n === 1) loadSites().catch(() => {});
   if (n === 4) fillSummary();
   if (n === 0) updateNextForPrereqs();
 }
@@ -661,15 +662,26 @@ async function pollPrereqInstall() {
   }
 }
 
-async function loadSites() {
-  const res = await fetch("/api/sites");
+async function loadSites(backendUrlOverride) {
+  const backendUrl =
+    (typeof backendUrlOverride === "string" ? backendUrlOverride : "") ||
+    $("backend-url")?.value?.trim() ||
+    "";
+  const query = backendUrl ? `?backend_url=${encodeURIComponent(backendUrl)}` : "";
+  const res = await fetch(`/api/sites${query}`);
   const data = await res.json();
-  sites = data.sites;
-  defaultBackend = data.defaultBackendUrl;
+  sites = data.sites || [];
+  defaultBackend = data.defaultBackendUrl || backendUrl || "";
+  const prevSite = $("site").value;
   $("site").innerHTML = sites
     .map((s) => `<option value="${s.id}">${s.label}</option>`)
     .join("");
-  $("backend-url").value = defaultBackend;
+  if (prevSite && sites.some((s) => s.id === prevSite)) {
+    $("site").value = prevSite;
+  }
+  if (!$("backend-url").value.trim() && defaultBackend) {
+    $("backend-url").value = defaultBackend;
+  }
   onSiteChanged();
 }
 
@@ -813,6 +825,7 @@ document.querySelectorAll('input[name="cam2-type"]').forEach((el) => {
 });
 $("hall-count").addEventListener("change", onHallCountChanged);
 $("site").addEventListener("change", onSiteChanged);
+$("backend-url")?.addEventListener("change", () => loadSites());
 $("remote-camera-config")?.addEventListener("change", updateRemoteConfigUi);
 
 buildNav();

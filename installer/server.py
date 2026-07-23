@@ -23,7 +23,7 @@ from installer.prerequisites import (
     install_prerequisite,
     prerequisite_status_payload,
 )
-from installer.sites import DEFAULT_BACKEND_URL, SITE_PROFILES
+from installer.sites import DEFAULT_BACKEND_URL, fetch_installer_sites
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -89,7 +89,8 @@ async def api_ping():
 
 
 @app.get("/api/sites")
-async def api_sites():
+async def api_sites(backend_url: str | None = None):
+    profiles, default_backend = fetch_installer_sites(backend_url)
     return {
         "sites": [
             {
@@ -98,9 +99,9 @@ async def api_sites():
                 "defaultHalls": site.default_halls,
                 "maxHalls": site.max_halls,
             }
-            for site in SITE_PROFILES
+            for site in profiles
         ],
-        "defaultBackendUrl": DEFAULT_BACKEND_URL,
+        "defaultBackendUrl": default_backend or DEFAULT_BACKEND_URL,
     }
 
 
