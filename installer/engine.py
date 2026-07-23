@@ -72,13 +72,17 @@ def repo_root() -> Path:
 
 def install_dir() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ["LOCALAPPDATA"]) / "anpr-edge-agent"
+        from installer.windows_paths import resolve_windows_install_dir
+
+        return resolve_windows_install_dir()
     return Path.home() / "Applications" / "anpr-edge-agent"
 
 
 def support_dir() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ["LOCALAPPDATA"]) / "anpr-edge-agent" / "data"
+        from installer.windows_paths import resolve_windows_support_dir
+
+        return resolve_windows_support_dir(install_dir())
     return Path.home() / "Library" / "Application Support" / "anpr-edge-agent"
 
 
@@ -555,6 +559,34 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
             if script.exists():
                 _run(["bash", str(script)], app_dir, log)
 
+    if sys.platform == "win32":
+        from installer.windows_paths import install_path_too_long_for_torch
+
+        if install_path_too_long_for_torch(app_dir):
+            log(
+                "Varning: installationsvägen är lång — PyTorch/OCR kan misslyckas. "
+                "Rekommenderad plats: C:\\ProgramData\\anpr-edge-agent"
+            )
+        else:
+            proc = subprocess.run(
+                [str(py), "-c", "import torch"],
+                cwd=app_dir,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess_flags(),
+                **subprocess_text_kwargs(),
+            )
+            if proc.returncode == 0:
+                log("OCR-miljö verifierad.")
+            else:
+                detail = (proc.stderr or proc.stdout or "").strip()
+                log(
+                    "Varning: PyTorch kunde inte laddas. OCR fungerar inte förrän "
+                    "installationen flyttas till en kortare sökväg."
+                )
+                if detail:
+                    log(f"PyTorch-fel: {detail[:300]}")
+
     return py
 
 
@@ -659,14 +691,18 @@ def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
     ps_dir = str(app_dir).replace("'", "''")
     ps = f"""
 Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue
-$action = New-ScheduledTaskAction -Execute '{ps_run}' -WorkingDirectory '{ps_dir}'
+$action = New-ScheduledTaskAction `
+  -Execute 'powershell.exe' `
+  -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ''{str(app_dir / "scripts" / "run-agent.ps1").replace("'", "''")}''' `
+  -WorkingDirectory '{ps_dir}'
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
   -DontStopIfGoingOnBatteries `
   -RestartCount 5 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
-  -ExecutionTimeLimit (New-TimeSpan -Days 3650)
+  -ExecutionTimeLimit (New-TimeSpan -Days 3650) `
+  -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Settings $settings `
   -Description 'ANPR Edge Agent' | Out-Null
 """
@@ -1028,6 +1064,9 @@ def run_install(cfg: InstallConfig, log: Callable[[str], None], *, open_browser:
     source = repo_root()
     target = install_dir()
     already = is_installed()
+
+    if sys.platform == "win32" and not already:
+        log(f"Installerar till {target} (ProgramData — rekommenderat för verkstad)")
 
     if already:
         log("Uppdaterar konfiguration…")

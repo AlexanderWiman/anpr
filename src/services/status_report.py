@@ -90,6 +90,13 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             "cooldownSeconds": settings.plate_cooldown_seconds,
             "ocrProcessing": agent._ocr_busy,
             "pendingFrames": len(agent._ocr_queue),
+            "ready": agent._ocr_last_error is None,
+            "lastError": agent._ocr_last_error,
+            "lastErrorAt": (
+                agent._ocr_last_error_at.isoformat()
+                if agent._ocr_last_error_at
+                else None
+            ),
         },
         "backend": {
             "url": settings.backend_url,

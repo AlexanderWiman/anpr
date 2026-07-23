@@ -1,11 +1,15 @@
 # Wait for ANPR web dashboard on 127.0.0.1:8080; start agent if needed.
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\anpr-edge-agent",
+    [string]$InstallDir = "",
     [int]$TimeoutSeconds = 120,
     [switch]$VisibleWindow
 )
 
 $ErrorActionPreference = "SilentlyContinue"
+. (Join-Path $PSScriptRoot "resolve-install-dir.ps1")
+if (-not $InstallDir) {
+    $InstallDir = Get-AnprInstallDir
+}
 $runScript = Join-Path $InstallDir "scripts\run-agent.cmd"
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 

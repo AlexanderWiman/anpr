@@ -95,6 +95,9 @@ class YoloOcrPlateProvider(PlateProvider):
 
         logger.info("YOLO+OCR models loaded", extra={"event": "models_loaded"})
 
+    def check_models_loadable(self) -> None:
+        self._ensure_models()
+
     def _detect_sync(self, image_path: str) -> list[PlateDetection]:
         import cv2
 

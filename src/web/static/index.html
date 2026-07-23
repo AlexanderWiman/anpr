@@ -576,6 +576,12 @@
       </div>
 
       <div class="metric metric-span-3">
+        <div class="metric-label">Skyltläsning (OCR)</div>
+        <div class="metric-value" id="ocr-status">—</div>
+        <div class="metric-sub" id="ocr-detail">—</div>
+      </div>
+
+      <div class="metric metric-span-3">
         <div class="metric-label">Fjärrövervakning</div>
         <div class="metric-value" id="heartbeat-status">—</div>
         <div class="metric-sub" id="heartbeat-detail">Heartbeat till server</div>
@@ -823,9 +829,36 @@
 
         updateControls(status.agent);
 
-        if (status.anpr.ocrProcessing) {
+        const ocr = status.anpr || {};
+        const ocrStatusEl = document.getElementById('ocr-status');
+        const ocrDetailEl = document.getElementById('ocr-detail');
+        if (ocr.lastError) {
+          ocrStatusEl.textContent = 'Fel';
+          ocrStatusEl.style.color = 'var(--red)';
+          ocrDetailEl.textContent = ocr.lastError;
+          document.getElementById('control-hint').textContent = ocr.lastError;
+          if (status.agent.state === 'running') {
+            document.getElementById('control-panel').className = 'hero error';
+            document.getElementById('control-status').textContent = 'OCR fungerar inte';
+          }
+        } else if (ocr.ocrProcessing) {
+          ocrStatusEl.textContent = 'Analyserar';
+          ocrStatusEl.style.color = 'var(--amber)';
+          ocrDetailEl.textContent = 'Läser registreringsskylt…';
           document.getElementById('control-hint').textContent =
             'Analyserar bild med OCR — vänta ett ögonblick…';
+        } else if (status.agent.state === 'running') {
+          ocrStatusEl.textContent = 'Redo';
+          ocrStatusEl.style.color = 'var(--green)';
+          ocrDetailEl.textContent = 'YOLO + OCR är laddat';
+        } else {
+          ocrStatusEl.textContent = 'Väntar';
+          ocrStatusEl.style.color = 'var(--text-tertiary)';
+          ocrDetailEl.textContent = 'Starta agenten för skyltläsning';
+        }
+
+        if (status.agent.error && status.agent.state === 'error') {
+          document.getElementById('control-hint').textContent = status.agent.error;
         }
 
         const running = status.agent.state === 'running';

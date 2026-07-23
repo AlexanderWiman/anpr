@@ -1,8 +1,36 @@
-# Installerar Python och ffmpeg om de saknas (Windows).
+# Installerar Python, ffmpeg och VC++ om de saknas (Windows).
 $ErrorActionPreference = "Continue"
 
 function Write-Log([string]$Message) {
     Write-Host "[prerequisites] $Message"
+}
+
+function Test-VcRedistInstalled {
+    $keys = @(
+        "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+    )
+    foreach ($key in $keys) {
+        try {
+            $installed = (Get-ItemProperty -Path $key -ErrorAction Stop).Installed
+            if ($installed -eq 1) {
+                return $true
+            }
+        } catch {
+        }
+    }
+    return $false
+}
+
+function Install-VcRedist {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Log "Installerar Microsoft Visual C++ Redistributable (kravs for PyTorch/OCR)..."
+        winget install -e --id Microsoft.VCRedist.2015+.x64 `
+            --accept-package-agreements --accept-source-agreements
+        return
+    }
+    Write-Log "VC++ Redistributable saknas. Ladda ner:"
+    Write-Log "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 }
 
 $findPython = Join-Path $PSScriptRoot "find-python.ps1"
@@ -34,4 +62,15 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     }
 } else {
     Write-Log "ffmpeg — OK"
+}
+
+if (Test-VcRedistInstalled) {
+    Write-Log "Visual C++ Redistributable — OK"
+} else {
+    Install-VcRedist
+    if (Test-VcRedistInstalled) {
+        Write-Log "Visual C++ Redistributable — OK"
+    } else {
+        Write-Log "VC++ Redistributable saknas fortfarande — OCR kan faila tills den ar installerad."
+    }
 }

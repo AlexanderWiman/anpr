@@ -24,6 +24,7 @@ from src.services.remote_camera_config import RemoteCameraConfigService
 from src.services.web_app import create_web_app
 from src.utils.frame_cleanup import cleanup_frames
 from src.utils.logging import get_logger, setup_logging
+from src.utils.ocr_errors import format_ocr_error
 from src.utils.plates import normalize_plate
 
 logger = get_logger(__name__)
@@ -74,6 +75,8 @@ class AnprAgent:
         self._ocr_queue: deque[PendingOcrFrame] = deque()
         self._queued_frame_paths: dict[str, Path] = {}
         self._ocr_worker_running = False
+        self._ocr_last_error: str | None = None
+        self._ocr_last_error_at: datetime | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._frame_captures_in_flight: set[str] = set()
 
@@ -199,6 +202,7 @@ class AnprAgent:
         """Run plate detection on a captured frame and deliver events."""
         pipeline = self.pipeline_for(camera_id)
         detections = await self._provider.detect_plate(str(frame_path))
+        self._clear_ocr_error()
 
         min_conf = min(self.settings.min_confidence, self.settings.ocr_min_confidence)
 
@@ -339,6 +343,30 @@ class AnprAgent:
                     extra={"event": "frame_cleanup_error", "error": str(exc)},
                 )
 
+    def _record_ocr_error(self, exc: BaseException) -> None:
+        self._ocr_last_error = format_ocr_error(exc)
+        self._ocr_last_error_at = datetime.now(timezone.utc)
+
+    def _clear_ocr_error(self) -> None:
+        self._ocr_last_error = None
+        self._ocr_last_error_at = None
+
+    async def _probe_ocr_on_start(self) -> None:
+        provider = self._provider
+        check = getattr(provider, "check_models_loadable", None)
+        if check is None:
+            return
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, check)
+            self._clear_ocr_error()
+        except Exception as exc:
+            self._record_ocr_error(exc)
+            logger.error(
+                "OCR models failed to load",
+                extra={"event": "ocr_unavailable", "error": str(exc)},
+            )
+
     async def _ocr_worker(self) -> None:
         self._ocr_worker_running = True
         try:
@@ -351,6 +379,7 @@ class AnprAgent:
                 try:
                     delivered = await self.process_frame(frame_path, camera_id)
                 except Exception as exc:
+                    self._record_ocr_error(exc)
                     logger.exception(
                         "frame processing error",
                         extra={
@@ -416,6 +445,7 @@ class AnprAgent:
             self.remote_camera_config.start()
             if self.settings.agent_auto_start:
                 await self.controller.start()
+            await self._probe_ocr_on_start()
 
         init_task = asyncio.create_task(_background_init(), name="agent-background-init")
 

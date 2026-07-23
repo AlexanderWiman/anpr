@@ -2,33 +2,18 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
+from src.config.install_paths import resolve_installed_app_dir, resolve_installed_support_env
+
 
 def installed_support_env() -> Path | None:
-    if sys.platform == "win32":
-        local = os.environ.get("LOCALAPPDATA", "")
-        if not local:
-            return None
-        path = Path(local) / "anpr-edge-agent" / "data" / ".env"
-    elif sys.platform == "darwin":
-        path = Path.home() / "Library/Application Support/anpr-edge-agent/.env"
-    else:
-        return None
-    return path if path.is_file() else None
+    return resolve_installed_support_env()
 
 
 def installed_app_dir() -> Path | None:
-    if sys.platform == "win32":
-        local = os.environ.get("LOCALAPPDATA", "")
-        if not local:
-            return None
-        return Path(local) / "anpr-edge-agent"
-    if sys.platform == "darwin":
-        return Path.home() / "Applications" / "anpr-edge-agent"
-    return None
+    return resolve_installed_app_dir()
 
 
 def project_env_file() -> Path | None:
