@@ -75,16 +75,34 @@ def read_version_from_init_text(text: str) -> str | None:
 def fetch_remote_version(repo: str | None = None, ref: str | None = None) -> str | None:
     repo = repo or update_repo()
     ref = ref or update_ref()
-    url = f"https://raw.githubusercontent.com/{repo}/{ref}/{AGENT_SUBDIR}/src/__init__.py"
-    try:
-        data = _http_get(url, accept="text/plain").decode("utf-8")
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return None
-    return read_version_from_init_text(data)
+    candidates = [
+        f"https://raw.githubusercontent.com/{repo}/{ref}/src/__init__.py",
+        f"https://raw.githubusercontent.com/{repo}/{ref}/{AGENT_SUBDIR}/src/__init__.py",
+    ]
+    for url in candidates:
+        try:
+            data = _http_get(url, accept="text/plain").decode("utf-8")
+        except (urllib.error.URLError, TimeoutError, OSError):
+            continue
+        version = read_version_from_init_text(data)
+        if version:
+            return version
+    return None
+
+
+def _release_asset_download_url(payload: dict) -> str | None:
+    for asset in payload.get("assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name", ""))
+        download = asset.get("browser_download_url")
+        if name.endswith(".zip") and isinstance(download, str) and download:
+            return download
+    return None
 
 
 def fetch_release_tag(repo: str | None = None) -> tuple[str | None, str | None]:
-    """Return (version, zipball_url) from latest GitHub Release if any."""
+    """Return (release tag, download_url) from latest GitHub Release if any."""
     repo = repo or update_repo()
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     try:
@@ -92,6 +110,9 @@ def fetch_release_tag(repo: str | None = None) -> tuple[str | None, str | None]:
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
         return None, None
     tag = str(payload.get("tag_name", "")).lstrip("v") or None
+    download = _release_asset_download_url(payload)
+    if download:
+        return tag, download
     zip_url = payload.get("zipball_url")
     if isinstance(zip_url, str):
         return tag, zip_url
@@ -131,10 +152,13 @@ def fetch_backend_agent_version(backend_url: str) -> dict | None:
 def remote_update_status(current_version: str | None) -> dict:
     repo = update_repo()
     ref = update_ref()
-    release_version, release_zip = fetch_release_tag(repo)
+    release_tag, release_download = fetch_release_tag(repo)
+    release_semver = (
+        fetch_remote_version(repo, f"v{release_tag}") if release_tag else None
+    )
     main_version = fetch_remote_version(repo, ref)
-    github_version = release_version or main_version
-    github_download = release_zip or f"https://github.com/{repo}/archive/refs/heads/{ref}.zip"
+    github_version = release_semver or main_version
+    github_download = release_download or f"https://github.com/{repo}/archive/refs/heads/{ref}.zip"
 
     backend_version: str | None = None
     backend_download: str | None = None
@@ -155,12 +179,25 @@ def remote_update_status(current_version: str | None) -> dict:
             "updateRepo": repo,
         }
 
+    # Installed build is at or ahead of backend-approved version — do not fall back to
+    # GitHub release tags (e.g. 2026.07.23.4) which are not comparable to semver.
+    if backend_version and not is_newer(backend_version, current_version):
+        return {
+            "remoteVersion": backend_version,
+            "remoteUpdateAvailable": False,
+            "updateSource": "backend",
+            "downloadUrl": backend_download,
+            "updateRepo": repo,
+            "backendVersion": backend_version,
+            "githubVersion": github_version,
+        }
+
     # Fallback to GitHub when backend is missing, stale, or not ahead of installed build.
     if github_version and is_newer(github_version, current_version):
         return {
             "remoteVersion": github_version,
             "remoteUpdateAvailable": True,
-            "updateSource": "release" if release_version else "main",
+            "updateSource": "release" if release_tag else "main",
             "downloadUrl": github_download,
             "updateRepo": repo,
         }
@@ -173,11 +210,17 @@ def remote_update_status(current_version: str | None) -> dict:
     return {
         "remoteVersion": best,
         "remoteUpdateAvailable": False,
-        "updateSource": "backend" if backend_version else ("release" if release_version else "main"),
+        "updateSource": "backend" if backend_version else ("release" if release_tag else "main"),
         "updateRepo": repo,
         "backendVersion": backend_version,
         "githubVersion": github_version,
     }
+
+
+def _download_accept(url: str) -> str:
+    if "api.github.com" in url and "/zipball/" in url:
+        return "application/vnd.github+json"
+    return "application/octet-stream"
 
 
 def _find_agent_dir(extract_root: Path) -> Path:
@@ -208,7 +251,7 @@ def download_release_source(
             url = f"https://github.com/{repo}/archive/refs/heads/{update_ref()}.zip"
 
     log("Laddar ner senaste versionen…")
-    archive = _http_get(url, accept="application/octet-stream")
+    archive = _http_get(url, accept=_download_accept(url))
     temp_dir = Path(tempfile.mkdtemp(prefix="anpr-update-"))
     try:
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
