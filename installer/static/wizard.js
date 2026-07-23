@@ -459,6 +459,10 @@ function onSiteChanged() {
   updateCameraUi();
 }
 
+function looksLikeReleaseTag(value) {
+  return /^\d{4}\.\d{2}\.\d{2}\.\d+$/.test(String(value || "").replace(/^v/, ""));
+}
+
 function renderUpdatePanel() {
   const panel = $("update-panel");
   if (!installInfo.installed) {
@@ -468,10 +472,19 @@ function renderUpdatePanel() {
   }
 
   const current = installInfo.currentVersion || "okänd";
-  const remote = installInfo.remoteVersion;
-  const hasRemote = installInfo.remoteUpdateAvailable;
+  let remote = installInfo.remoteVersion;
+  let hasRemote = installInfo.remoteUpdateAvailable;
   const hasLocal = installInfo.localUpdateAvailable;
-  const hasUpdate = installInfo.updateAvailable;
+  let hasUpdate = installInfo.updateAvailable;
+
+  if (looksLikeReleaseTag(remote)) {
+    remote = installInfo.githubVersion || installInfo.backendVersion || current;
+    hasRemote = false;
+  }
+  if (remote && current && remote === current) {
+    hasRemote = false;
+  }
+  hasUpdate = hasLocal || hasRemote;
 
   panel.classList.remove("hidden");
 

@@ -19,23 +19,24 @@ def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _resolve_port() -> tuple[int, bool]:
-    """Return (port, reuse_existing_server)."""
+def _resolve_port() -> int:
     preferred = int(os.environ.get("ANPR_INSTALLER_PORT", str(DEFAULT_PORT)))
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("127.0.0.1", preferred))
-        return preferred, False
+        return preferred
     except OSError:
         try:
             with socket.create_connection(("127.0.0.1", preferred), timeout=0.3):
-                _log(f"Installationsguiden körs redan på port {preferred}.")
-                return preferred, True
+                _log(f"En installationsguide körs redan på port {preferred}.")
+                _log("Stäng det svarta Installer CMD-fönstret och kör Installer.cmd igen.")
+                _open_url(f"http://127.0.0.1:{preferred}")
+                sys.exit(1)
         except OSError:
             pass
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1], False
+        return s.getsockname()[1]
 
 
 def _open_url(url: str) -> None:
@@ -97,15 +98,9 @@ def _wait_for_api_ready(port: int, attempts: int = 150) -> bool:
 def main() -> None:
     ensure_installer_venv(_log)
 
-    port, reuse = _resolve_port()
+    port = _resolve_port()
     url = f"http://127.0.0.1:{port}"
     waiting_url = f"{url}/waiting.html?port={port}"
-
-    if reuse:
-        _open_url(url)
-        _log(f"\n  ANPR Install Wizard (redan igång)\n  {url}\n")
-        _wait_for_existing_server(port)
-        return
 
     bootstrap_httpd, _bootstrap_thread = start_waiting_server(port)
     if not wait_until_listening(port):

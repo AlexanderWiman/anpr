@@ -18,14 +18,13 @@ DEFAULT_REPO = "AlexanderWiman/anpr"
 AGENT_SUBDIR = "anpr-edge-agent"
 DEFAULT_REF = "main"
 USER_AGENT = "anpr-edge-agent-updater/1.0"
+_RELEASE_TAG = re.compile(r"^v?\d{4}\.\d{2}\.\d{2}\.\d+$")
 
 
-def update_repo() -> str:
-    return os.environ.get("ANPR_UPDATE_REPO", DEFAULT_REPO).strip()
-
-
-def update_ref() -> str:
-    return os.environ.get("ANPR_UPDATE_REF", DEFAULT_REF).strip()
+def looks_like_release_tag(value: str | None) -> bool:
+    if not value:
+        return False
+    return bool(_RELEASE_TAG.match(value.strip()))
 
 
 def parse_version(value: str | None) -> tuple[int, ...]:
@@ -39,6 +38,8 @@ def parse_version(value: str | None) -> tuple[int, ...]:
 
 
 def is_newer(remote: str | None, current: str | None) -> bool:
+    if looks_like_release_tag(remote):
+        return False
     remote_t = parse_version(remote)
     current_t = parse_version(current)
     if not remote_t:
@@ -46,6 +47,21 @@ def is_newer(remote: str | None, current: str | None) -> bool:
     if not current_t:
         return True
     return remote_t > current_t
+
+
+def display_version(value: str | None, *, fallback: str | None = None) -> str | None:
+    """Prefer semver for UI; release tags (2026.07.23.5) are not user-facing versions."""
+    if value and not looks_like_release_tag(value):
+        return value
+    return fallback
+
+
+def update_repo() -> str:
+    return os.environ.get("ANPR_UPDATE_REPO", DEFAULT_REPO).strip()
+
+
+def update_ref() -> str:
+    return os.environ.get("ANPR_UPDATE_REF", DEFAULT_REF).strip()
 
 
 def _http_get(url: str, *, accept: str = "application/json") -> bytes:

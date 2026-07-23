@@ -1,7 +1,9 @@
 from installer.updater import (
     _download_accept,
     _release_asset_download_url,
+    display_version,
     is_newer,
+    looks_like_release_tag,
     parse_version,
     remote_update_status,
 )
@@ -17,6 +19,10 @@ def test_is_newer():
     assert is_newer("1.0.17", "1.0.16")
     assert not is_newer("1.0.16", "1.0.17")
     assert not is_newer("1.0.17", "1.0.17")
+    assert not is_newer("2026.07.23.5", "1.0.41")
+    assert looks_like_release_tag("2026.07.23.5")
+    assert not looks_like_release_tag("1.0.41")
+    assert display_version("2026.07.23.5", fallback="1.0.41") == "1.0.41"
 
 
 def test_local_update_only_when_installer_is_newer():

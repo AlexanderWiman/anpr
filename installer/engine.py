@@ -1007,7 +1007,7 @@ def is_installed() -> bool:
 
 
 def install_status_payload() -> dict:
-    from installer.updater import is_newer, remote_update_status
+    from installer.updater import display_version, is_newer, remote_update_status
 
     installed = is_installed()
     target = install_dir()
@@ -1016,7 +1016,13 @@ def install_status_payload() -> dict:
     available = read_version(source)
     local_update = bool(installed and available and is_newer(available, current))
     remote = remote_update_status(current) if installed else {}
-    remote_version = remote.get("remoteVersion")
+    remote_version = display_version(
+        remote.get("remoteVersion"),
+        fallback=remote.get("githubVersion") or remote.get("backendVersion"),
+    )
+    remote_update = bool(remote.get("remoteUpdateAvailable"))
+    if current and remote_version and not is_newer(remote_version, current):
+        remote_update = False
     newer_than_server = bool(
         current and remote_version and is_newer(current, remote_version)
     )
@@ -1025,11 +1031,13 @@ def install_status_payload() -> dict:
         "installed": installed,
         "currentVersion": current,
         "availableVersion": available,
-        "updateAvailable": local_update or remote.get("remoteUpdateAvailable", False),
+        "updateAvailable": local_update or remote_update,
         "localUpdateAvailable": local_update,
+        "remoteUpdateAvailable": remote_update,
         "newerThanServer": newer_than_server,
         "installDir": str(target),
         **remote,
+        "remoteVersion": remote_version,
     }
     if installed:
         saved = read_installed_config()
