@@ -10,6 +10,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.utils.ssl_certs import configure_ssl_certificates
+
+configure_ssl_certificates()
+
 from src.services.agent import main  # noqa: E402
 
 

@@ -34,6 +34,15 @@ COPY_APPLICATION_EXCLUDE = frozenset(
     }
 )
 
+OCR_MODEL_BASE_URL = "https://github.com/ankandrew/cnn-ocr-lp/releases/download/arg-plates"
+OCR_MODEL_FILES = (
+    ("european_mobile_vit_v2_ocr.onnx", f"{OCR_MODEL_BASE_URL}/european_mobile_vit_v2_ocr.onnx"),
+    (
+        "european_mobile_vit_v2_ocr_config.yaml",
+        f"{OCR_MODEL_BASE_URL}/european_mobile_vit_v2_ocr_config.yaml",
+    ),
+)
+
 
 @dataclass
 class InstallCameraConfig:
@@ -542,7 +551,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
     _pip_install(
         py,
         "requirements.txt",
-        "Steg 1/4: Grundpaket (kamera och nätverk)…",
+        "Steg 1/5: Grundpaket (kamera och nätverk)…",
         app_dir,
         log,
         env=ssl_env,
@@ -550,7 +559,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
     _pip_install(
         py,
         "requirements-ai.txt",
-        "Steg 2/4: AI för skyltigenkänning (YOLO) — största nedladdningen, kan ta 5–15 min",
+        "Steg 2/5: AI för skyltigenkänning (YOLO) — största nedladdningen, kan ta 5–15 min",
         app_dir,
         log,
         env=ssl_env,
@@ -558,7 +567,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
     _pip_install(
         py,
         "requirements-ocr.txt",
-        "Steg 3/4: OCR för registreringsskyltar…",
+        "Steg 3/5: OCR för registreringsskyltar…",
         app_dir,
         log,
         env=ssl_env,
@@ -566,7 +575,7 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
 
     model = app_dir / "models" / "plate_yolov8.pt"
     if not model.exists():
-        log("Steg 4/4: Laddar ner ANPR-modell…")
+        log("Steg 4/5: Laddar ner ANPR-modell…")
         if sys.platform == "win32":
             url = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
             model.parent.mkdir(parents=True, exist_ok=True)
@@ -575,6 +584,17 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
             script = app_dir / "scripts" / "download-yolo-model.sh"
             if script.exists():
                 _run(["bash", str(script)], app_dir, log)
+
+    ocr_dir = app_dir / "models" / "ocr"
+    missing_ocr = [name for name, _url in OCR_MODEL_FILES if not (ocr_dir / name).is_file()]
+    if missing_ocr:
+        log("Steg 5/5: Laddar ner OCR-modell…")
+        ocr_dir.mkdir(parents=True, exist_ok=True)
+        for name, url in OCR_MODEL_FILES:
+            dest = ocr_dir / name
+            if dest.is_file():
+                continue
+            _download_https(url, dest, py=py)
 
     if sys.platform == "win32":
         from installer.windows_paths import install_path_too_long_for_torch

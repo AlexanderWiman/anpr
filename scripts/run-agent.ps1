@@ -83,6 +83,15 @@ try {
     $env:PYTHONPATH = $InstallDir
     $env:PYTHONUNBUFFERED = "1"
 
+    try {
+        $certBundle = & $python -c "import certifi; print(certifi.where())" 2>$null
+        if ($certBundle -and (Test-Path $certBundle)) {
+            $env:SSL_CERT_FILE = $certBundle
+            $env:REQUESTS_CA_BUNDLE = $certBundle
+        }
+    } catch {
+    }
+
     Write-Log "Starting $python -m src.main"
     Start-Process `
         -FilePath $python `

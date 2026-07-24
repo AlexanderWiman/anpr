@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 OCR_MODEL_NAME = "european-plates-mobile-vit-v2-model"
+OCR_ONNX_FILE = "european_mobile_vit_v2_ocr.onnx"
+OCR_CONFIG_FILE = "european_mobile_vit_v2_ocr_config.yaml"
 
 
 class YoloOcrPlateProvider(PlateProvider):
@@ -81,17 +83,28 @@ class YoloOcrPlateProvider(PlateProvider):
                 "Run: ./scripts/download-yolo-model.sh"
             )
 
+        ocr_dir = model_path.parent / "ocr"
+        ocr_onnx = ocr_dir / OCR_ONNX_FILE
+        ocr_config = ocr_dir / OCR_CONFIG_FILE
+
         logger.info(
             "loading YOLO+OCR models",
             extra={
                 "event": "models_loading",
                 "yolo_model": str(model_path),
                 "ocr_model": OCR_MODEL_NAME,
+                "ocr_local": ocr_onnx.is_file() and ocr_config.is_file(),
             },
         )
 
         self._detector = YOLO(str(model_path))
-        self._ocr = LicensePlateRecognizer(OCR_MODEL_NAME)
+        if ocr_onnx.is_file() and ocr_config.is_file():
+            self._ocr = LicensePlateRecognizer(
+                onnx_model_path=ocr_onnx,
+                plate_config_path=ocr_config,
+            )
+        else:
+            self._ocr = LicensePlateRecognizer(OCR_MODEL_NAME)
 
         logger.info("YOLO+OCR models loaded", extra={"event": "models_loaded"})
 

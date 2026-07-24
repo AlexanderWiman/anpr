@@ -29,6 +29,13 @@ def format_ocr_error(exc: BaseException) -> str:
             "Kör scripts\\install-prerequisites.ps1 som administratör (64-bit PowerShell, inte x86)"
         )
 
+    if "certificate_verify_failed" in lowered or "ssl: cert" in lowered:
+        return (
+            "OCR-modellen kunde inte laddas ner (SSL-certifikat). "
+            "Kör om installationen/uppdateringen som administratör så OCR-modellen laddas till models\\ocr, "
+            "eller starta om agenten efter att certifi är installerat i .venv."
+        )
+
     if message:
         return f"OCR-fel: {message}"
     return "OCR-fel: okänt fel vid modellstart"
