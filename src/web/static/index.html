@@ -529,6 +529,53 @@
       opacity: 0.7;
     }
 
+    .log-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .log-toolbar select {
+      appearance: none;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 0.75rem;
+    }
+
+    .log-view {
+      margin: 0;
+      padding: 16px 20px 20px;
+      max-height: 360px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.55;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-line + .log-line { margin-top: 8px; }
+
+    .log-line .log-time { color: var(--text-tertiary); }
+    .log-line .log-level-info { color: var(--text-secondary); }
+    .log-line .log-level-warning { color: var(--amber); }
+    .log-line .log-level-error,
+    .log-line .log-level-critical { color: var(--red); }
+
+    .log-meta {
+      padding: 0 20px 16px;
+      font-size: 0.72rem;
+      color: var(--text-tertiary);
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -637,6 +684,28 @@
       </div>
     </section>
 
+    <section class="panel" id="logs-section">
+      <div class="panel-head">
+        <span class="panel-title">Loggar</span>
+        <div class="log-toolbar">
+          <select id="log-level" onchange="refreshLogs()">
+            <option value="">Alla nivåer</option>
+            <option value="info">Info+</option>
+            <option value="warning" selected>Varning+</option>
+            <option value="error">Fel</option>
+          </select>
+          <select id="log-source" onchange="refreshLogs()">
+            <option value="all" selected>Alla loggar</option>
+            <option value="agent">agent.log</option>
+            <option value="startup">agent-startup.log</option>
+          </select>
+          <button class="btn-ghost" onclick="refreshLogs()">Uppdatera loggar</button>
+        </div>
+      </div>
+      <div class="log-meta" id="log-meta">—</div>
+      <pre class="log-view" id="log-view">Laddar loggar…</pre>
+    </section>
+
     <footer>
       <span id="poll-info">127.0.0.1:8080</span>
       <span id="config-path" class="config-path"></span>
@@ -669,6 +738,62 @@
     };
 
     let busy = false;
+    let logBusy = false;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    }
+
+    function logLevelClass(level) {
+      const normalized = String(level || 'INFO').toLowerCase();
+      if (normalized === 'warning' || normalized === 'warn') return 'log-level-warning';
+      if (normalized === 'error' || normalized === 'critical') return 'log-level-error';
+      return 'log-level-info';
+    }
+
+    function renderLogLine(entry) {
+      const time = entry.timestamp ? escapeHtml(entry.timestamp) : '—';
+      const level = escapeHtml(entry.level || 'INFO');
+      const source = entry.source ? `[${escapeHtml(entry.source)}] ` : '';
+      const message = escapeHtml(entry.message || entry.raw || '');
+      const event = entry.event ? ` · ${escapeHtml(entry.event)}` : '';
+      return `<div class="log-line"><span class="log-time">${time}</span> ` +
+        `<span class="${logLevelClass(entry.level)}">${level}</span> ` +
+        `${source}${message}${event}</div>`;
+    }
+
+    async function refreshLogs() {
+      if (logBusy) return;
+      logBusy = true;
+      const level = document.getElementById('log-level').value;
+      const source = document.getElementById('log-source').value;
+      const params = new URLSearchParams({ tail: '200', source });
+      if (level) params.set('level', level);
+      try {
+        const res = await fetch(`/api/logs?${params.toString()}`);
+        if (!res.ok) throw new Error('Kunde inte läsa loggar');
+        const data = await res.json();
+        const files = (data.files || [])
+          .map((file) => `${file.name} (${file.size} B)`)
+          .join(' · ');
+        document.getElementById('log-meta').textContent =
+          `${data.logDir || '—'}${files ? ` · ${files}` : ''}`;
+        const view = document.getElementById('log-view');
+        if (!data.entries || !data.entries.length) {
+          view.innerHTML = '<span class="empty">Inga loggrader matchar filtret.</span>';
+        } else {
+          view.innerHTML = data.entries.map(renderLogLine).join('');
+          view.scrollTop = view.scrollHeight;
+        }
+      } catch {
+        document.getElementById('log-view').textContent = 'Kunde inte läsa loggar.';
+      } finally {
+        logBusy = false;
+      }
+    }
 
     async function loadVersion() {
       const el = document.getElementById('agent-version');
@@ -998,7 +1123,9 @@
 
     refresh();
     loadVersion();
+    refreshLogs();
     setInterval(refresh, 3000);
+    setInterval(refreshLogs, 5000);
   </script>
 </body>
 </html>

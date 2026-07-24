@@ -93,4 +93,19 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
         status = await agent.delivery.refresh_backend_status()
         return status.as_dict()
 
+    @app.get("/api/logs")
+    async def api_logs(tail: int = 200, level: str | None = None, source: str = "all"):
+        from src.utils.log_reader import read_recent_logs
+
+        if source not in {"agent", "startup", "all"}:
+            raise HTTPException(status_code=400, detail="source must be agent, startup, or all")
+        if level is not None and level.lower() not in {"info", "warning", "error"}:
+            raise HTTPException(status_code=400, detail="level must be info, warning, or error")
+        return read_recent_logs(
+            agent.settings.log_dir,
+            tail=tail,
+            min_level=level,
+            source=source,
+        )
+
     return app
