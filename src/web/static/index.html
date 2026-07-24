@@ -547,6 +547,66 @@
       font-size: 0.75rem;
     }
 
+    .log-search {
+      flex: 1 1 220px;
+      min-width: 180px;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-family: inherit;
+      font-size: 0.78rem;
+    }
+
+    .log-search:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .log-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 20px 12px;
+    }
+
+    .log-chip {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.7rem;
+      cursor: pointer;
+    }
+
+    .log-chip.active {
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .log-pause-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .log-highlight {
+      background: rgba(102, 126, 234, 0.28);
+      color: var(--text-primary);
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+
+    .log-view.paused {
+      box-shadow: inset 0 0 0 1px rgba(236, 201, 75, 0.35);
+    }
+
     .log-view {
       margin: 0;
       padding: 16px 20px 20px;
@@ -688,10 +748,17 @@
       <div class="panel-head">
         <span class="panel-title">Loggar</span>
         <div class="log-toolbar">
+          <input
+            type="search"
+            id="log-search"
+            class="log-search"
+            placeholder="Sök t.ex. plate_detected, motion, ocr, camera"
+            oninput="onLogSearchInput()"
+          />
           <select id="log-level" onchange="refreshLogs()">
-            <option value="">Alla nivåer</option>
+            <option value="" selected>Alla nivåer</option>
             <option value="info">Info+</option>
-            <option value="warning" selected>Varning+</option>
+            <option value="warning">Varning+</option>
             <option value="error">Fel</option>
           </select>
           <select id="log-source" onchange="refreshLogs()">
@@ -699,8 +766,20 @@
             <option value="agent">agent.log</option>
             <option value="startup">agent-startup.log</option>
           </select>
-          <button class="btn-ghost" onclick="refreshLogs()">Uppdatera loggar</button>
+          <label class="log-pause-label">
+            <input type="checkbox" id="log-pause" onchange="onLogPauseChange()" />
+            Pausa live
+          </label>
+          <button class="btn-ghost" onclick="refreshLogs(true)">Uppdatera</button>
         </div>
+      </div>
+      <div class="log-chips">
+        <button type="button" class="log-chip" data-query="plate_detected" onclick="applyLogChip(this)">Detektering</button>
+        <button type="button" class="log-chip" data-query="motion_active" onclick="applyLogChip(this)">Rörelse</button>
+        <button type="button" class="log-chip" data-query="ocr" onclick="applyLogChip(this)">OCR</button>
+        <button type="button" class="log-chip" data-query="camera" onclick="applyLogChip(this)">Kamera</button>
+        <button type="button" class="log-chip" data-query="detection_filtered" onclick="applyLogChip(this)">Filtrerad</button>
+        <button type="button" class="log-chip" data-query="error" onclick="applyLogChip(this)">Fel</button>
       </div>
       <div class="log-meta" id="log-meta">—</div>
       <pre class="log-view" id="log-view">Laddar loggar…</pre>
@@ -739,12 +818,24 @@
 
     let busy = false;
     let logBusy = false;
+    let logPaused = false;
+    let logSearchTimer = null;
 
     function escapeHtml(value) {
       return String(value)
         .replaceAll('&', '&amp;')
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;');
+    }
+
+    function highlightSearch(text, query) {
+      const safe = escapeHtml(text || '');
+      if (!query) return safe;
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return safe.replace(
+        new RegExp(escapedQuery, 'gi'),
+        (match) => `<mark class="log-highlight">${match}</mark>`
+      );
     }
 
     function logLevelClass(level) {
@@ -754,24 +845,68 @@
       return 'log-level-info';
     }
 
-    function renderLogLine(entry) {
+    function renderLogLine(entry, query) {
       const time = entry.timestamp ? escapeHtml(entry.timestamp) : '—';
       const level = escapeHtml(entry.level || 'INFO');
       const source = entry.source ? `[${escapeHtml(entry.source)}] ` : '';
-      const message = escapeHtml(entry.message || entry.raw || '');
-      const event = entry.event ? ` · ${escapeHtml(entry.event)}` : '';
+      const message = highlightSearch(entry.message || entry.raw || '', query);
+      const event = entry.event ? ` · ${highlightSearch(entry.event, query)}` : '';
       return `<div class="log-line"><span class="log-time">${time}</span> ` +
         `<span class="${logLevelClass(entry.level)}">${level}</span> ` +
         `${source}${message}${event}</div>`;
     }
 
-    async function refreshLogs() {
+    function getLogSearchQuery() {
+      return document.getElementById('log-search').value.trim();
+    }
+
+    function updateLogChipState() {
+      const query = getLogSearchQuery().toLowerCase();
+      document.querySelectorAll('.log-chip').forEach((chip) => {
+        chip.classList.toggle('active', chip.dataset.query === query);
+      });
+    }
+
+    function applyLogChip(button) {
+      const query = button.dataset.query || '';
+      document.getElementById('log-search').value = query;
+      document.getElementById('log-pause').checked = true;
+      logPaused = true;
+      updateLogChipState();
+      refreshLogs(true);
+    }
+
+    function onLogSearchInput() {
+      document.getElementById('log-pause').checked = true;
+      logPaused = true;
+      updateLogChipState();
+      if (logSearchTimer) clearTimeout(logSearchTimer);
+      logSearchTimer = setTimeout(() => refreshLogs(true), 250);
+    }
+
+    function onLogPauseChange() {
+      logPaused = document.getElementById('log-pause').checked;
+      document.getElementById('log-view').classList.toggle('paused', logPaused);
+      if (!logPaused) refreshLogs(true);
+    }
+
+    function shouldStickLogToBottom(view) {
+      if (logPaused) return false;
+      return view.scrollHeight - view.scrollTop - view.clientHeight < 48;
+    }
+
+    async function refreshLogs(force = false) {
       if (logBusy) return;
+      if (logPaused && !force) return;
       logBusy = true;
       const level = document.getElementById('log-level').value;
       const source = document.getElementById('log-source').value;
-      const params = new URLSearchParams({ tail: '200', source });
+      const query = getLogSearchQuery();
+      const params = new URLSearchParams({ tail: query ? '300' : '200', source });
       if (level) params.set('level', level);
+      if (query) params.set('q', query);
+      const view = document.getElementById('log-view');
+      const stickToBottom = shouldStickLogToBottom(view);
       try {
         const res = await fetch(`/api/logs?${params.toString()}`);
         if (!res.ok) throw new Error('Kunde inte läsa loggar');
@@ -779,15 +914,20 @@
         const files = (data.files || [])
           .map((file) => `${file.name} (${file.size} B)`)
           .join(' · ');
+        const matchInfo = query
+          ? `${data.matched || 0} träffar (sökte ${data.scanned || 0} rader)`
+          : `${(data.entries || []).length} rader`;
         document.getElementById('log-meta').textContent =
-          `${data.logDir || '—'}${files ? ` · ${files}` : ''}`;
-        const view = document.getElementById('log-view');
+          `${data.logDir || '—'}${files ? ` · ${files}` : ''} · ${matchInfo}`;
         if (!data.entries || !data.entries.length) {
-          view.innerHTML = '<span class="empty">Inga loggrader matchar filtret.</span>';
+          view.innerHTML = '<span class="empty">Inga loggrader matchar sökningen.</span>';
         } else {
-          view.innerHTML = data.entries.map(renderLogLine).join('');
-          view.scrollTop = view.scrollHeight;
+          view.innerHTML = data.entries.map((entry) => renderLogLine(entry, query)).join('');
+          if (stickToBottom || query) {
+            view.scrollTop = view.scrollHeight;
+          }
         }
+        view.classList.toggle('paused', logPaused);
       } catch {
         document.getElementById('log-view').textContent = 'Kunde inte läsa loggar.';
       } finally {

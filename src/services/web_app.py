@@ -94,7 +94,12 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
         return status.as_dict()
 
     @app.get("/api/logs")
-    async def api_logs(tail: int = 200, level: str | None = None, source: str = "all"):
+    async def api_logs(
+        tail: int = 200,
+        level: str | None = None,
+        source: str = "all",
+        q: str | None = None,
+    ):
         from src.utils.log_reader import read_recent_logs
 
         if source not in {"agent", "startup", "all"}:
@@ -106,6 +111,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             tail=tail,
             min_level=level,
             source=source,
+            query=q,
         )
 
     return app

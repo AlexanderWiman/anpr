@@ -150,10 +150,20 @@ def read_recent_logs(
     tail: int = 200,
     min_level: str | None = None,
     source: str = "agent",
+    query: str | None = None,
+    scan_lines: int | None = None,
 ) -> dict:
     root = resolve_log_dir(log_dir)
     tail = max(1, min(tail, 1000))
     min_value = _min_level_value(min_level)
+    search = query.strip().lower() if query else ""
+
+    if search:
+        per_file = min(max(scan_lines or 5000, tail * 20), 20_000)
+    elif source == "all":
+        per_file = max(tail, 50)
+    else:
+        per_file = tail
 
     sources: list[tuple[str, Path]] = []
     if source in ("agent", "all"):
@@ -161,23 +171,28 @@ def read_recent_logs(
     if source in ("startup", "all"):
         sources.append(("agent-startup.log", root / "agent-startup.log"))
 
-    per_file = max(tail, 50) if len(sources) > 1 else tail
     entries: list[LogEntry] = []
+    scanned = 0
     for name, path in sources:
         if path.name not in _ALLOWED_NAMES:
             continue
         if not str(path.resolve()).startswith(str(root)):
             continue
-        for line in _tail_lines(path, per_file):
+        lines = _tail_lines(path, per_file)
+        scanned += len(lines)
+        for line in lines:
             entry = _parse_log_line(line, source=name)
             if entry is None:
                 continue
             if min_value is not None:
                 if _LOG_LEVELS.get(entry.level, 0) < min_value:
                     continue
+            if search and not _entry_matches_query(entry, search):
+                continue
             entries.append(entry)
 
     entries.sort(key=lambda item: item.timestamp or "")
+    matched = len(entries)
     if len(entries) > tail:
         entries = entries[-tail:]
 
@@ -188,4 +203,18 @@ def read_recent_logs(
         "tail": tail,
         "level": min_level,
         "source": source,
+        "query": query or "",
+        "matched": matched,
+        "scanned": scanned,
     }
+
+
+def _entry_matches_query(entry: LogEntry, query: str) -> bool:
+    haystacks = (
+        entry.message,
+        entry.event,
+        entry.logger,
+        entry.raw,
+        entry.source,
+    )
+    return any(query in str(value).lower() for value in haystacks if value)

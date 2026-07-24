@@ -59,3 +59,33 @@ def test_read_recent_logs_includes_startup_log(tmp_path):
     assert "agent" in messages
     assert "startup" in messages
     assert len(result["files"]) == 2
+
+
+def test_read_recent_logs_filters_by_query(tmp_path):
+    log_dir = tmp_path / "logs"
+    rows = [
+        {
+            "timestamp": "2026-07-24 07:00:00,000",
+            "level": "INFO",
+            "message": "motion detected",
+            "event": "motion_active",
+        },
+        {
+            "timestamp": "2026-07-24 07:00:01,000",
+            "level": "INFO",
+            "message": "plate detected",
+            "event": "plate_detected",
+        },
+        {
+            "timestamp": "2026-07-24 07:00:02,000",
+            "level": "INFO",
+            "message": "heartbeat sent",
+            "event": "heartbeat_sent",
+        },
+    ]
+    _write_log(log_dir / "agent.log", rows)
+
+    result = read_recent_logs(log_dir, tail=10, query="plate")
+
+    assert result["matched"] == 1
+    assert result["entries"][0]["event"] == "plate_detected"
