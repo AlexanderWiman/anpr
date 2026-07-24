@@ -1,9 +1,18 @@
 import logging
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from pythonjsonlogger import jsonlogger
+
+_QUIET_LOGGERS = (
+    "httpx",
+    "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "urllib3",
+)
 
 
 def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
@@ -13,6 +22,9 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
     root = logging.getLogger()
     root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
     root.handlers.clear()
+
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     formatter = jsonlogger.JsonFormatter(
         fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -25,8 +37,8 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
 
     file_handler = RotatingFileHandler(
         log_file,
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,
+        maxBytes=2 * 1024 * 1024,
+        backupCount=3,
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)

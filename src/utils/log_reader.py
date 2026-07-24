@@ -154,12 +154,12 @@ def read_recent_logs(
     scan_lines: int | None = None,
 ) -> dict:
     root = resolve_log_dir(log_dir)
-    tail = max(1, min(tail, 1000))
+    tail = max(1, min(tail, 500))
     min_value = _min_level_value(min_level)
     search = query.strip().lower() if query else ""
 
     if search:
-        per_file = min(max(scan_lines or 5000, tail * 20), 20_000)
+        per_file = min(max(scan_lines or 3000, tail * 10), 8000)
     elif source == "all":
         per_file = max(tail, 50)
     else:

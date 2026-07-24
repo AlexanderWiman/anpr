@@ -73,7 +73,7 @@ class BookingHintService:
             self._plates = plates
             self._refreshed_at = datetime.now(timezone.utc)
             self._last_error = None
-            logger.info(
+            logger.debug(
                 "booking hints refreshed",
                 extra={
                     "event": "booking_hints_refreshed",

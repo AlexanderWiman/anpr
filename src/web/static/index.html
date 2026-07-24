@@ -902,7 +902,7 @@
       const level = document.getElementById('log-level').value;
       const source = document.getElementById('log-source').value;
       const query = getLogSearchQuery();
-      const params = new URLSearchParams({ tail: query ? '300' : '200', source });
+      const params = new URLSearchParams({ tail: query ? '200' : '100', source });
       if (level) params.set('level', level);
       if (query) params.set('q', query);
       const view = document.getElementById('log-view');
@@ -1264,8 +1264,8 @@
     refresh();
     loadVersion();
     refreshLogs();
-    setInterval(refresh, 3000);
-    setInterval(refreshLogs, 5000);
+    setInterval(refresh, 5000);
+    setInterval(refreshLogs, 15000);
   </script>
 </body>
 </html>

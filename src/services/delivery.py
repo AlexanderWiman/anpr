@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -33,6 +34,7 @@ class DeliveryService:
         self._history = event_history
         self._backend_reachable = False
         self._backend_status = BackendStatus(False, "unknown", "Kontrollerar backend…")
+        self._backend_status_checked_at: float | None = None
         self._deliveries_succeeded = 0
         self._deliveries_failed = 0
 
@@ -44,10 +46,24 @@ class DeliveryService:
     def backend_status(self) -> BackendStatus:
         return self._backend_status
 
-    async def refresh_backend_status(self) -> BackendStatus:
+    async def refresh_backend_status(
+        self,
+        *,
+        force: bool = False,
+        max_age_seconds: float = 30,
+    ) -> BackendStatus:
+        now = time.monotonic()
+        if (
+            not force
+            and self._backend_status_checked_at is not None
+            and now - self._backend_status_checked_at < max_age_seconds
+        ):
+            return self._backend_status
+
         status = await self._backend.check_backend()
         self._backend_status = status
         self._backend_reachable = status.ok
+        self._backend_status_checked_at = now
         return status
 
     @property
@@ -154,36 +170,38 @@ class DeliveryService:
     async def run_retry_loop(self) -> None:
         """Background loop that retries queued events."""
         while True:
-            try:
-                await self.refresh_backend_status()
-            except Exception:
-                self._backend_reachable = False
-                self._backend_status = BackendStatus(False, "down", "Kan inte nå backend")
-
             ready = self._queue.get_ready_events()
-            for queued in ready:
-                if queued.attempts >= self._settings.backend_max_retries:
-                    logger.error(
-                        "event permanently failed",
-                        extra={
-                            "event": "delivery_failed",
-                            "queue_id": queued.id,
-                            "plate": queued.event.plate,
-                            "attempts": queued.attempts,
-                            "last_error": queued.last_error,
-                        },
-                    )
-                    self._queue.dequeue(queued.id)
-                    self._update_history(queued, "failed", queued.last_error)
-                    continue
+            if ready:
+                try:
+                    await self.refresh_backend_status(force=True)
+                except Exception:
+                    self._backend_reachable = False
+                    self._backend_status = BackendStatus(False, "down", "Kan inte nå backend")
+                    self._backend_status_checked_at = time.monotonic()
 
-                success = await self._try_deliver(queued)
-                if success:
-                    self._queue.dequeue(queued.id)
-                    self._update_history(queued, "delivered")
-                else:
-                    self._queue.update(queued)
+                for queued in ready:
                     if queued.attempts >= self._settings.backend_max_retries:
+                        logger.error(
+                            "event permanently failed",
+                            extra={
+                                "event": "delivery_failed",
+                                "queue_id": queued.id,
+                                "plate": queued.event.plate,
+                                "attempts": queued.attempts,
+                                "last_error": queued.last_error,
+                            },
+                        )
+                        self._queue.dequeue(queued.id)
                         self._update_history(queued, "failed", queued.last_error)
+                        continue
+
+                    success = await self._try_deliver(queued)
+                    if success:
+                        self._queue.dequeue(queued.id)
+                        self._update_history(queued, "delivered")
+                    else:
+                        self._queue.update(queued)
+                        if queued.attempts >= self._settings.backend_max_retries:
+                            self._update_history(queued, "failed", queued.last_error)
 
             await asyncio.sleep(5)
