@@ -670,6 +670,31 @@ def _install_mac_launchagent(app_dir: Path, log: Callable[[str], None]) -> None:
     log("Autostart aktiverad (startar vid inloggning)")
 
 
+def windows_autostart_task_script(app_dir: Path, *, task_name: str = "ANPREdgeAgent") -> str:
+    """Return PowerShell that registers the ANPR agent scheduled task on Windows."""
+    ps_dir = str(app_dir).replace("'", "''")
+    ps_ps1 = str(app_dir / "scripts" / "run-agent.ps1").replace("'", "''")
+    return f"""
+Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue
+$action = New-ScheduledTaskAction `
+  -Execute 'cmd.exe' `
+  -Argument '/c set "ANPR_INSTALL_DIR={ps_dir}"&& powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ''{ps_ps1}''' `
+  -WorkingDirectory '{ps_dir}'
+$triggerLogon = New-ScheduledTaskTrigger -AtLogOn
+$triggerBoot = New-ScheduledTaskTrigger -AtStartup
+$triggerBoot.Delay = 'PT2M'
+$settings = New-ScheduledTaskSettingsSet `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -RestartCount 10 `
+  -RestartInterval (New-TimeSpan -Minutes 1) `
+  -ExecutionTimeLimit (New-TimeSpan -Days 3650) `
+  -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger @($triggerLogon, $triggerBoot) -Settings $settings `
+  -Description 'ANPR Edge Agent' | Out-Null
+"""
+
+
 def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
     run_script = app_dir / "scripts" / "run-agent.cmd"
     task_name = "ANPREdgeAgent"
@@ -687,25 +712,7 @@ def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
     if old_bat.is_file():
         old_bat.unlink()
 
-    ps_run = str(run_script).replace("'", "''")
-    ps_dir = str(app_dir).replace("'", "''")
-    ps = f"""
-Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue
-$action = New-ScheduledTaskAction `
-  -Execute 'powershell.exe' `
-  -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ''{str(app_dir / "scripts" / "run-agent.ps1").replace("'", "''")}''' `
-  -WorkingDirectory '{ps_dir}'
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet `
-  -AllowStartIfOnBatteries `
-  -DontStopIfGoingOnBatteries `
-  -RestartCount 5 `
-  -RestartInterval (New-TimeSpan -Minutes 1) `
-  -ExecutionTimeLimit (New-TimeSpan -Days 3650) `
-  -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Settings $settings `
-  -Description 'ANPR Edge Agent' | Out-Null
-"""
+    ps = windows_autostart_task_script(app_dir, task_name=task_name)
     result = subprocess.run(
         ["powershell", "-NoProfile", "-Command", ps],
         capture_output=True,
@@ -717,13 +724,13 @@ Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger
         startup.mkdir(parents=True, exist_ok=True)
         bat = startup / "ANPR Edge Agent.bat"
         bat.write_text(
-            f'@echo off\r\nstart "" /min "{run_script}"\r\n',
+            f'@echo off\r\nset "ANPR_INSTALL_DIR={app_dir}"\r\nstart "" /min "{run_script}"\r\n',
             encoding="utf-8",
         )
         log(f"Autostart via Startup-mappen: {bat}")
         return
 
-    log("Autostart aktiverad (schemalagd uppgift vid inloggning)")
+    log("Autostart aktiverad (schemalagd uppgift vid inloggning och uppstart)")
 
 
 def agent_is_running(port: int = 8080) -> bool:

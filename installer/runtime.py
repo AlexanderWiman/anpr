@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -23,6 +24,12 @@ def repo_root() -> Path:
 
 
 def installer_venv_dir() -> Path:
+    # Keep wizard venv in the user profile — ProgramData installs are often read-only
+    # for normal users and pip updates to .installer-venv would fail with WinError 5.
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "").strip()
+        if local:
+            return Path(local) / "anpr-edge-agent" / ".installer-venv"
     return repo_root() / ".installer-venv"
 
 
