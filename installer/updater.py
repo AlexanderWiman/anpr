@@ -299,8 +299,9 @@ def run_remote_update(log: Callable[[str], None]) -> None:
     status = remote_update_status(current)
     download_url = status.get("downloadUrl")
 
-    staging = download_release_source(log, download_url=download_url)
     target = install_dir()
+    stop_agent(target, log)
+    staging = download_release_source(log, download_url=download_url)
     try:
         log("Installerar nedladdad version…")
         copy_application(staging, target, log)

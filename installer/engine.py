@@ -17,6 +17,23 @@ from urllib.parse import quote, unquote, urlparse
 
 from installer.subprocess_utils import subprocess_flags, subprocess_text_kwargs
 
+# Never deploy to site PCs — avoids WinError 5 when updating under ProgramData.
+COPY_APPLICATION_EXCLUDE = frozenset(
+    {
+        ".venv",
+        ".git",
+        ".github",
+        "__pycache__",
+        "storage",
+        "logs",
+        ".env",
+        "models",
+        "tests",
+        "dist",
+        ".cursor",
+    }
+)
+
 
 @dataclass
 class InstallCameraConfig:
@@ -590,25 +607,33 @@ def setup_python_env(app_dir: Path, log: Callable[[str], None]) -> Path:
     return py
 
 
+def _remove_tree(path: Path) -> None:
+    """Remove a directory tree; clear read-only bits on Windows before retry."""
+
+    def onerror(func, p, exc_info):
+        exc = exc_info[1]
+        if isinstance(exc, PermissionError) or (
+            isinstance(exc, OSError) and getattr(exc, "winerror", None) in {5, 32}
+        ):
+            os.chmod(p, os.stat(p).st_mode | 0o200)
+            func(p)
+            return
+        raise exc
+
+    shutil.rmtree(path, onerror=onerror)
+
+
 def copy_application(source: Path, target: Path, log: Callable[[str], None]) -> None:
     log(f"Kopierar till {target}...")
     target.mkdir(parents=True, exist_ok=True)
-    exclude = {
-        ".venv",
-        ".git",
-        "__pycache__",
-        "storage",
-        "logs",
-        ".env",
-        "models",
-    }
+    exclude = COPY_APPLICATION_EXCLUDE
     for item in source.iterdir():
         if item.name in exclude:
             continue
         dest = target / item.name
         if item.is_dir():
             if dest.exists():
-                shutil.rmtree(dest)
+                _remove_tree(dest)
             shutil.copytree(
                 item,
                 dest,
@@ -1075,6 +1100,7 @@ def run_update(log: Callable[[str], None], *, open_browser: bool = True) -> None
     target = install_dir()
     source = repo_root()
 
+    stop_agent(target, log)
     log("Uppdaterar programfiler...")
     copy_application(source, target, log)
     log("Uppdaterar Python-paket...")

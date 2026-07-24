@@ -22,6 +22,13 @@ def format_ocr_error(exc: BaseException) -> str:
     if isinstance(exc, FileNotFoundError) and "yolo" in lowered:
         return "YOLO-modellen saknas. Kör om installationen så att modellen laddas ner."
 
+    if "winerror 126" in lowered or "c10.dll" in lowered:
+        return (
+            "PyTorch/OCR kunde inte laddas (saknad DLL). "
+            "Installera Microsoft Visual C++ Redistributable x64 och kör om Python-miljön (.venv). "
+            "Kör scripts\\install-prerequisites.ps1 som administratör (64-bit PowerShell, inte x86)"
+        )
+
     if message:
         return f"OCR-fel: {message}"
     return "OCR-fel: okänt fel vid modellstart"

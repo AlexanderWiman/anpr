@@ -29,8 +29,23 @@ function Install-VcRedist {
             --accept-package-agreements --accept-source-agreements
         return
     }
-    Write-Log "VC++ Redistributable saknas. Ladda ner:"
-    Write-Log "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+
+    $url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    $installer = Join-Path $env:TEMP "vc_redist.x64.exe"
+    Write-Log "winget saknas — laddar ner VC++ Redistributable x64..."
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+        Write-Log "Installerar VC++ Redistributable (tyst)..."
+        $proc = Start-Process -FilePath $installer -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 1638) {
+            Write-Log "VC++-installation avslutades med kod $($proc.ExitCode)."
+        }
+    } catch {
+        Write-Log "Kunde inte installera VC++ automatiskt. Ladda ner manuellt:"
+        Write-Log $url
+    } finally {
+        Remove-Item $installer -ErrorAction SilentlyContinue
+    }
 }
 
 $findPython = Join-Path $PSScriptRoot "find-python.ps1"
