@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from installer.updater import (
     _download_accept,
     _release_asset_download_url,
@@ -6,6 +8,7 @@ from installer.updater import (
     looks_like_release_tag,
     parse_version,
     remote_update_status,
+    run_remote_update,
 )
 
 
@@ -103,3 +106,50 @@ def test_remote_update_status_uses_release_semver_not_tag(monkeypatch):
     status = remote_update_status("1.0.40")
     assert status["remoteUpdateAvailable"] is False
     assert status["githubVersion"] == "1.0.40"
+
+
+def test_run_remote_update_calls_stop_agent(monkeypatch, tmp_path):
+    stopped: list[Path] = []
+
+    monkeypatch.setattr("installer.engine.is_installed", lambda: True)
+    monkeypatch.setattr("installer.engine.install_dir", lambda: tmp_path)
+    monkeypatch.setattr("installer.engine.read_version", lambda _path: "1.0.51")
+    monkeypatch.setattr(
+        "installer.engine.stop_agent",
+        lambda target, log: stopped.append(target),
+    )
+    monkeypatch.setattr(
+        "installer.engine.copy_application",
+        lambda _staging, _target, log: None,
+    )
+    monkeypatch.setattr(
+        "installer.engine.setup_python_env",
+        lambda _target, log: None,
+    )
+    monkeypatch.setattr(
+        "installer.engine.install_autostart",
+        lambda _target, log: None,
+    )
+    monkeypatch.setattr(
+        "installer.engine.create_dashboard_shortcut",
+        lambda log: None,
+    )
+    monkeypatch.setattr(
+        "installer.engine.start_agent",
+        lambda _target, log: None,
+    )
+    monkeypatch.setattr(
+        "installer.updater.remote_update_status",
+        lambda _current: {
+            "downloadUrl": "https://example.com/agent.zip",
+            "remoteVersion": "1.0.53",
+        },
+    )
+    monkeypatch.setattr(
+        "installer.updater.download_release_source",
+        lambda log, download_url=None: tmp_path / "staging",
+    )
+
+    run_remote_update(lambda _msg: None)
+
+    assert stopped == [tmp_path]

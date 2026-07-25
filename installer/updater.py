@@ -288,6 +288,7 @@ def run_remote_update(log: Callable[[str], None]) -> None:
         read_version,
         setup_python_env,
         start_agent,
+        stop_agent,
         copy_application,
         create_dashboard_shortcut,
     )
