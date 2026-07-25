@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 import asyncio
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from src import __version__
 from src.services.status_report import build_status_report
@@ -13,6 +14,15 @@ if TYPE_CHECKING:
     from src.services.agent import AnprAgent
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
+
+
+def _crm_dashboard_html() -> HTMLResponse:
+    path = STATIC_DIR / "crm-dashboard.html"
+    if not path.is_file():
+        return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
+    html = path.read_text(encoding="utf-8")
+    html = html.replace("__ANPR_VERSION__", __version__)
+    return HTMLResponse(html)
 
 
 def _dashboard_html() -> HTMLResponse:
@@ -32,7 +42,15 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
+        return _crm_dashboard_html()
+
+    @app.get("/legacy", response_class=HTMLResponse)
+    async def legacy_dashboard():
         return _dashboard_html()
+
+    @app.get("/crm", response_class=HTMLResponse)
+    async def crm_dashboard():
+        return _crm_dashboard_html()
 
     @app.get("/api/version")
     async def api_version():
@@ -159,6 +177,29 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             "compressedBytes": bundle.compressed_bytes,
         }
 
+    @app.get("/api/settings")
+    async def api_settings():
+        from src.services.dashboard_settings import build_dashboard_settings_payload
+
+        return await asyncio.to_thread(build_dashboard_settings_payload)
+
+    @app.get("/api/cameras/{camera_id}/preview")
+    async def api_camera_preview(camera_id: str):
+        from src.services.camera_preview import preview_path
+
+        if camera_id not in agent.pipelines:
+            raise HTTPException(status_code=404, detail="Kamera hittades inte")
+
+        path = preview_path(agent.settings, camera_id)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Ingen förhandsbild ännu")
+
+        return FileResponse(
+            path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
+
     @app.get("/api/update/status")
     async def api_update_status():
         from src.services.local_update import build_update_status_payload
@@ -184,5 +225,7 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             raise HTTPException(status_code=500, detail=f"Kunde inte starta uppdatering: {exc}") from exc
 
         return {"ok": True, "message": "Uppdatering startad — sidan kan tappa kontakten en stund."}
+
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     return app

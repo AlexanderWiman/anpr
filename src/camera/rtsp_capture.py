@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from src.camera.frame_io import frame_filename, save_frame
+from src.services.camera_preview import write_camera_preview
 
 from src.camera.base import CameraStatus, FrameCaptureService
 from src.config.cameras import CameraConfig
@@ -208,6 +209,8 @@ class RTSPCaptureService(FrameCaptureService):
                     extra={"event": "camera_error", "path": str(frame_path)},
                 )
                 return None
+
+            write_camera_preview(self._settings, self._camera.id, frame)
 
             self._last_frame_at = datetime.now(timezone.utc)
             self._frames_captured += 1
