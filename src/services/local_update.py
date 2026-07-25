@@ -33,6 +33,13 @@ def read_local_update_state() -> dict | None:
     return payload
 
 
+def clear_local_update_state() -> None:
+    try:
+        local_update_state_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def build_update_status_payload() -> dict:
     from src import __version__
     from installer.engine import install_dir, is_installed, read_version
@@ -59,6 +66,10 @@ def build_update_status_payload() -> dict:
     job = read_local_update_state()
     if job and job.get("status") == "running":
         update_available = False
+    elif job and job.get("status") in {"failed", "completed"} and not update_available:
+        # Stale banner from an earlier attempt — agent is already on latest.
+        clear_local_update_state()
+        job = None
 
     return {
         "installed": True,
