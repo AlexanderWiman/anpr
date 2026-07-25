@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     motion_threshold: float = Field(default=0.012, alias="MOTION_THRESHOLD")
     motion_active_seconds: float = Field(default=45.0, alias="MOTION_ACTIVE_SECONDS")
     motion_scan_interval_ms: int = Field(default=5000, alias="MOTION_SCAN_INTERVAL_MS")
+    motion_periodic_scan_seconds: float = Field(
+        default=60.0,
+        alias="MOTION_PERIODIC_SCAN_SECONDS",
+    )
     rtsp_connect_timeout_ms: int = Field(default=10000, alias="RTSP_CONNECT_TIMEOUT_MS")
     rtsp_reconnect_delay_ms: int = Field(default=5000, alias="RTSP_RECONNECT_DELAY_MS")
     rtsp_transport: str = Field(default="tcp", alias="RTSP_TRANSPORT")

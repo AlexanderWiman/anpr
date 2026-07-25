@@ -28,12 +28,15 @@ class MotionGate:
         threshold: float,
         active_seconds: float,
         downscale_width: int = 320,
+        periodic_scan_seconds: float = 0.0,
     ) -> None:
         self._threshold = threshold
         self._active_seconds = active_seconds
         self._downscale_width = downscale_width
+        self._periodic_scan_seconds = max(0.0, periodic_scan_seconds)
         self._reference: np.ndarray | None = None
         self._active_until = 0.0
+        self._last_periodic_at: float | None = None
         self._frames_skipped = 0
         self._activations = 0
 
@@ -53,6 +56,31 @@ class MotionGate:
         """Clear reference frame — next capture establishes a new baseline."""
         self._reference = None
         self._active_until = 0.0
+        self._last_periodic_at = None
+
+    def _maybe_activate_periodic(self, now: float) -> bool:
+        """Force OCR briefly on a timer so parked vehicles are still scanned."""
+        if self._periodic_scan_seconds <= 0:
+            return False
+        if self._last_periodic_at is None:
+            self._last_periodic_at = now
+            return False
+        if now - self._last_periodic_at < self._periodic_scan_seconds:
+            return False
+
+        self._last_periodic_at = now
+        self._active_until = now + self._active_seconds
+        self._activations += 1
+        logger.info(
+            "periodic scan — OCR active",
+            extra={
+                "event": "motion_active",
+                "score": None,
+                "active_seconds": self._active_seconds,
+                "reason": "periodic_scan",
+            },
+        )
+        return True
 
     def activate(self, seconds: float | None = None) -> None:
         """Force OCR for a period (e.g. after Start when a car is already in frame)."""
@@ -77,6 +105,10 @@ class MotionGate:
 
         gray = self._downscale_gray(image)
         now = time.monotonic()
+
+        if self._maybe_activate_periodic(now):
+            self._reference = gray
+            return True
 
         if now < self._active_until:
             self._reference = gray

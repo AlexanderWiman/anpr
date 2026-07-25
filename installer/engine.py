@@ -329,6 +329,7 @@ def render_env(cfg: InstallConfig) -> str:
         "MOTION_GATE_ENABLED=true",
         "MOTION_SCAN_INTERVAL_MS=5000",
         "MOTION_ACTIVE_SECONDS=45",
+        "MOTION_PERIODIC_SCAN_SECONDS=60",
         "MOTION_THRESHOLD=0.012",
         "",
         "RTSP_TRANSPORT=tcp",

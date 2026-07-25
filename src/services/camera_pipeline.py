@@ -32,6 +32,7 @@ class CameraPipeline:
             MotionGate(
                 threshold=settings.motion_threshold,
                 active_seconds=settings.motion_active_seconds,
+                periodic_scan_seconds=settings.motion_periodic_scan_seconds,
             )
             if motion_enabled
             else None
