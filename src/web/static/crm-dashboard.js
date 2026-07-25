@@ -39,6 +39,7 @@
     disconnected: "Frånkopplad",
     error: "Fel",
     unconfigured: "Ej konfigurerad",
+    idle: "Agent stoppad",
   };
 
   const EVENT_LABELS = {
@@ -101,6 +102,14 @@
     return `<span class="tag ${item.cls}">${escapeHtml(item.text)}</span>`;
   }
 
+  function displayCameraStatus(camera) {
+    return camera.effectiveStatus || camera.status;
+  }
+
+  function cameraIds(cameras) {
+    return (cameras || []).map((camera) => camera.id).join("|");
+  }
+
   function cameraLabel(cameraId) {
     const camera = (statusData?.cameras || []).find((item) => item.id === cameraId);
     return camera?.label || cameraId || "—";
@@ -108,8 +117,8 @@
 
   function cameraStatusTag(status) {
     const label = CAMERA_STATE_LABELS[status] || status;
-    const cls = status === "connected" ? "ok" : status === "error" || status === "disconnected" ? "err" : "warn";
-    return `<span class="tag ${cls}">${escapeHtml(label)}</span>`;
+    const cls = status === "connected" || status === "idle" ? "ok" : status === "error" || status === "disconnected" ? "err" : "warn";
+    return `<span class="tag ${cls} camera-status-tag">${escapeHtml(label)}</span>`;
   }
 
   function goto(pageId) {
@@ -207,7 +216,7 @@
     $("stat-plate-time").textContent = last?.seen_at ? fmtTimeShort(last.seen_at) : "Ingen detektering ännu";
 
     const cameras = statusData.cameras || [];
-    const online = cameras.filter((camera) => camera.status === "connected").length;
+    const online = cameras.filter((camera) => displayCameraStatus(camera) === "connected").length;
     $("stat-cameras").textContent = `${online}/${cameras.length || 0}`;
     $("stat-cameras-sub").textContent = cameras.length
       ? cameras.map((camera) => camera.label || camera.id).join(", ")
@@ -238,30 +247,62 @@
     return `/api/cameras/${encodeURIComponent(cameraId)}/preview?t=${Date.now()}`;
   }
 
+  let lastRenderedCameraIds = "";
+
+  function updateCameraCards(cameras) {
+    const grid = $("camera-grid");
+    cameras.forEach((camera) => {
+      const card = grid.querySelector(`[data-camera-id="${camera.id}"]`);
+      if (!card) return;
+      const statusEl = card.querySelector(".camera-status-tag");
+      if (statusEl) {
+        statusEl.outerHTML = cameraStatusTag(displayCameraStatus(camera));
+      }
+      const timeEl = card.querySelector(".camera-preview-time");
+      if (timeEl) timeEl.textContent = fmtTime(camera.lastFrameAt);
+      const hintEl = card.querySelector(".camera-sync-hint");
+      const syncing = camera.status !== displayCameraStatus(camera) && camera.statusMessage;
+      if (hintEl) {
+        hintEl.textContent = syncing ? camera.statusMessage : "";
+        hintEl.hidden = !syncing;
+      }
+    });
+  }
+
   function renderCameras() {
     const cameras = statusData?.cameras || [];
+    const grid = $("camera-grid");
     if (!cameras.length) {
-      $("camera-grid").innerHTML = '<div class="card"><div class="empty">Ingen kamera konfigurerad</div></div>';
+      grid.innerHTML = '<div class="card"><div class="empty">Ingen kamera konfigurerad</div></div>';
+      lastRenderedCameraIds = "";
       return;
     }
 
-    $("camera-grid").innerHTML = cameras.map((camera, index) => `
-      <div class="card">
+    const ids = cameraIds(cameras);
+    if (ids === lastRenderedCameraIds) {
+      updateCameraCards(cameras);
+      return;
+    }
+
+    lastRenderedCameraIds = ids;
+    grid.innerHTML = cameras.map((camera) => `
+      <div class="card" data-camera-id="${escapeHtml(camera.id)}">
         <div class="card-body">
           <div class="camera-card" style="border:none;padding:0">
             <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
               <h3>${escapeHtml(camera.label || camera.id)}</h3>
-              ${cameraStatusTag(camera.status)}
+              ${cameraStatusTag(displayCameraStatus(camera))}
             </div>
+            <div class="camera-meta camera-sync-hint" style="color:var(--amber);font-size:0.78rem" hidden></div>
             <div class="camera-meta">
               ID: <span class="mono">${escapeHtml(camera.id)}</span> · Riktning: ${escapeHtml(camera.direction || "—")}
             </div>
-            <div class="camera-preview" id="camera-preview-wrap-${index}">
-              <img id="camera-preview-${index}" alt="Kamerabild ${escapeHtml(camera.label || camera.id)}" hidden>
-              <div class="camera-preview-placeholder" id="camera-preview-ph-${index}">Väntar på bild…</div>
+            <div class="camera-preview" data-preview-for="${escapeHtml(camera.id)}">
+              <img data-preview-img="${escapeHtml(camera.id)}" alt="Kamerabild ${escapeHtml(camera.label || camera.id)}" hidden>
+              <div class="camera-preview-placeholder" data-preview-ph="${escapeHtml(camera.id)}">Väntar på bild…</div>
               <div class="camera-preview-overlay"></div>
               <div class="camera-live"><span class="dot"></span>Live</div>
-              <div class="camera-preview-time" id="camera-preview-time-${index}">${escapeHtml(fmtTime(camera.lastFrameAt))}</div>
+              <div class="camera-preview-time">${escapeHtml(fmtTime(camera.lastFrameAt))}</div>
             </div>
             <div class="camera-preview-note">Senaste bildruta från agenten · uppdateras var 2:e sekund</div>
             <div class="camera-meta" style="margin-top:10px"><span class="mono">${escapeHtml(camera.streamUrl || "—")}</span></div>
@@ -270,13 +311,15 @@
       </div>
     `).join("");
 
-    cameras.forEach((camera, index) => refreshCameraPreview(camera, index));
+    cameras.forEach((camera) => refreshCameraPreview(camera));
+    updateCameraCards(cameras);
   }
 
-  async function refreshCameraPreview(camera, index) {
-    const img = $(`camera-preview-${index}`);
-    const placeholder = $(`camera-preview-ph-${index}`);
-    const timeEl = $(`camera-preview-time-${index}`);
+  async function refreshCameraPreview(camera) {
+    const img = document.querySelector(`[data-preview-img="${camera.id}"]`);
+    const placeholder = document.querySelector(`[data-preview-ph="${camera.id}"]`);
+    const card = document.querySelector(`[data-camera-id="${camera.id}"]`);
+    const timeEl = card?.querySelector(".camera-preview-time");
     if (!img) return;
 
     try {
@@ -294,7 +337,8 @@
       img.hidden = true;
       if (placeholder) {
         placeholder.hidden = false;
-        placeholder.textContent = camera.status === "connected"
+        const shown = displayCameraStatus(camera);
+        placeholder.textContent = shown === "connected"
           ? "Ingen bild ännu — väntar på nästa frame"
           : (camera.statusMessage || "Kamera ej ansluten");
       }
@@ -306,8 +350,9 @@
     stopPreviewPolling();
     const cameras = statusData?.cameras || [];
     if (!cameras.length) return;
+    cameras.forEach((camera) => refreshCameraPreview(camera));
     previewTimers.push(setInterval(() => {
-      cameras.forEach((camera, index) => refreshCameraPreview(camera, index));
+      (statusData?.cameras || []).forEach((camera) => refreshCameraPreview(camera));
     }, 2000));
   }
 
@@ -650,6 +695,9 @@
 
     refreshStatus();
     pollTimer = setInterval(refreshStatus, 5000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshStatus();
+    });
     setInterval(() => {
       if (currentPage === "logs" && !logPaused) refreshLogs();
     }, 4000);

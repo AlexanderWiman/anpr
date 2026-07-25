@@ -193,7 +193,8 @@ class RTSPCaptureService(FrameCaptureService):
                     "frame read failed",
                     extra={"event": "camera_error", "reason": "empty_frame"},
                 )
-                self._status = CameraStatus.RECONNECTING
+                if self._capture is None or not self._capture.isOpened():
+                    self._status = CameraStatus.RECONNECTING
                 return None
 
             output_dir.mkdir(parents=True, exist_ok=True)

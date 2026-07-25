@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 
 from src.utils.rtsp_url import mask_stream_url
 
+# Show "connected" in UI while agent is running if we got a frame recently,
+# even during brief RTSP reconnects (dashboard polling must not imply camera health).
+RECENT_FRAME_GRACE_SECONDS = 120.0
+
 
 def _host_info() -> dict:
     try:
@@ -25,20 +29,49 @@ def _host_info() -> dict:
     }
 
 
-def _camera_status(pipeline) -> dict:
+def effective_camera_status(
+    raw_status: str,
+    last_frame_at: datetime | None,
+    *,
+    agent_running: bool,
+    now: datetime,
+) -> str:
+    if not agent_running:
+        return "idle"
+    if raw_status == "connected":
+        return "connected"
+    if last_frame_at is not None:
+        age = (now - last_frame_at).total_seconds()
+        if age <= RECENT_FRAME_GRACE_SECONDS:
+            return "connected"
+    return raw_status
+
+
+def _camera_status(pipeline, *, agent_running: bool, now: datetime) -> dict:
     camera = pipeline.capture
     status_message = getattr(camera, "status_message", None)
+    last_frame_at = camera.last_frame_at
+    raw_status = camera.status.value
+    effective = effective_camera_status(
+        raw_status,
+        last_frame_at,
+        agent_running=agent_running,
+        now=now,
+    )
+    last_frame_age = (
+        round((now - last_frame_at).total_seconds(), 1) if last_frame_at else None
+    )
     return {
         "id": pipeline.camera_id,
         "label": pipeline.label,
         "direction": pipeline.direction,
         "source": camera.source_type,
-        "status": camera.status.value,
+        "status": raw_status,
+        "effectiveStatus": effective,
         "statusMessage": status_message,
         "streamUrl": mask_stream_url(pipeline.config.rtsp_url),
-        "lastFrameAt": (
-            camera.last_frame_at.isoformat() if camera.last_frame_at else None
-        ),
+        "lastFrameAt": last_frame_at.isoformat() if last_frame_at else None,
+        "lastFrameAgeSeconds": last_frame_age,
         "framesCaptured": camera.frames_captured,
     }
 
@@ -50,8 +83,12 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
     config_path = settings_env_path()
     now = datetime.now(timezone.utc)
     agent_status = agent.controller.status()
+    agent_running = agent_status.get("state") == "running"
     delivery = agent.delivery
-    cameras = [_camera_status(pipeline) for pipeline in agent.pipelines.values()]
+    cameras = [
+        _camera_status(pipeline, agent_running=agent_running, now=now)
+        for pipeline in agent.pipelines.values()
+    ]
     primary = agent.primary_pipeline
     primary_capture = primary.capture if primary is not None else None
 
