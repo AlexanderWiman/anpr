@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_dir: Path = Field(default=Path("./logs"), alias="LOG_DIR")
+    log_export_hours: float = Field(default=24.0, alias="LOG_EXPORT_HOURS")
 
     # Populated after env load — one or more halls/cameras for this agent.
     cameras: list[CameraConfig] = Field(default_factory=list, exclude=True)
@@ -186,6 +187,11 @@ class Settings(BaseSettings):
     def backend_cameras_url(self) -> str:
         base = self.backend_url.rstrip("/")
         return f"{base}/api/anpr/sites/{self.site_id}/cameras"
+
+    @property
+    def backend_log_exports_url(self) -> str:
+        base = self.backend_url.rstrip("/")
+        return f"{base}/api/anpr/sites/{self.site_id}/log-exports"
 
 
 def load_settings() -> Settings:

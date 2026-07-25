@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
@@ -112,5 +113,76 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
             source=source,
             query=q,
         )
+
+    @app.post("/api/logs/export")
+    async def api_logs_export(hours: float | None = None):
+        """Bundle last N hours of logs and upload to backend (manual IT trigger)."""
+        from src.utils.log_export import build_log_export
+
+        export_hours = float(hours) if hours is not None else agent.settings.log_export_hours
+        try:
+            bundle = await asyncio.to_thread(
+                build_log_export,
+                agent.settings.log_dir,
+                hours=export_hours,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Kunde inte läsa loggar: {exc}") from exc
+
+        import uuid
+
+        request_id = str(uuid.uuid4())
+        try:
+            await agent.backend.upload_log_export(
+                request_id,
+                status="completed",
+                hours=bundle.hours,
+                line_count=bundle.line_count,
+                exported_at=bundle.exported_at,
+                truncated=bundle.truncated,
+                original_bytes=bundle.original_bytes,
+                compressed_bytes=bundle.compressed_bytes,
+                content_gzip_base64=bundle.content_gzip_base64,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Kunde inte skicka loggar till backend: {exc}",
+            ) from exc
+
+        return {
+            "ok": True,
+            "requestId": request_id,
+            "hours": bundle.hours,
+            "lineCount": bundle.line_count,
+            "truncated": bundle.truncated,
+            "compressedBytes": bundle.compressed_bytes,
+        }
+
+    @app.get("/api/update/status")
+    async def api_update_status():
+        from src.services.local_update import build_update_status_payload
+
+        return await asyncio.to_thread(build_update_status_payload)
+
+    @app.post("/api/update/start")
+    async def api_update_start():
+        from src.services.local_update import build_update_status_payload, spawn_local_update
+
+        status = await asyncio.to_thread(build_update_status_payload)
+        job = status.get("job") or {}
+        if job.get("status") == "running":
+            raise HTTPException(status_code=409, detail="Uppdatering pågår redan")
+        if not status.get("updateAvailable"):
+            raise HTTPException(status_code=400, detail="Ingen ny version tillgänglig")
+
+        try:
+            await asyncio.to_thread(spawn_local_update)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Kunde inte starta uppdatering: {exc}") from exc
+
+        return {"ok": True, "message": "Uppdatering startad — sidan kan tappa kontakten en stund."}
 
     return app

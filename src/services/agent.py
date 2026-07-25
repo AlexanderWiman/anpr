@@ -79,6 +79,7 @@ class AnprAgent:
         self._ocr_last_error_at: datetime | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._frame_captures_in_flight: set[str] = set()
+        self._log_exports_in_flight: set[str] = set()
 
     @property
     def camera(self):
@@ -197,6 +198,78 @@ class AnprAgent:
                 )
         finally:
             self._frame_captures_in_flight.discard(request_id)
+
+    async def perform_remote_log_export(
+        self,
+        request_id: str,
+        *,
+        hours: float | None = None,
+    ) -> None:
+        if request_id in self._log_exports_in_flight:
+            return
+
+        self._log_exports_in_flight.add(request_id)
+        try:
+            from src.utils.log_export import build_log_export
+
+            export_hours = (
+                float(hours)
+                if hours is not None
+                else float(self.settings.log_export_hours)
+            )
+            bundle = await asyncio.to_thread(
+                build_log_export,
+                self.settings.log_dir,
+                hours=export_hours,
+            )
+            payload = bundle.as_upload_payload(request_id)
+            await self.backend.upload_log_export(
+                request_id,
+                status="completed",
+                hours=bundle.hours,
+                line_count=bundle.line_count,
+                exported_at=bundle.exported_at,
+                truncated=bundle.truncated,
+                original_bytes=bundle.original_bytes,
+                compressed_bytes=bundle.compressed_bytes,
+                content_gzip_base64=bundle.content_gzip_base64,
+            )
+            logger.info(
+                "remote log export uploaded",
+                extra={
+                    "event": "log_export_uploaded",
+                    "request_id": request_id,
+                    "line_count": bundle.line_count,
+                    "compressed_bytes": bundle.compressed_bytes,
+                    "truncated": bundle.truncated,
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "remote log export failed",
+                extra={
+                    "event": "log_export_failed",
+                    "request_id": request_id,
+                    "error": str(exc),
+                },
+            )
+            try:
+                await self.backend.upload_log_export(
+                    request_id,
+                    status="failed",
+                    error=str(exc),
+                )
+            except Exception as upload_exc:
+                logger.warning(
+                    "log export failure upload failed",
+                    extra={
+                        "event": "log_export_failed",
+                        "request_id": request_id,
+                        "error": str(upload_exc),
+                    },
+                )
+        finally:
+            self._log_exports_in_flight.discard(request_id)
 
     async def process_frame(self, frame_path: Path, camera_id: str) -> bool:
         """Run plate detection on a captured frame and deliver events."""

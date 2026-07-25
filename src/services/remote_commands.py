@@ -27,3 +27,12 @@ async def handle_heartbeat_commands_async(agent, commands: list[dict] | None) ->
         if command_type == "update":
             await asyncio.to_thread(spawn_remote_update, command)
             return
+        if command_type == "export_logs":
+            request_id = command.get("requestId")
+            hours = command.get("hours")
+            if request_id:
+                asyncio.create_task(
+                    agent.perform_remote_log_export(str(request_id), hours=hours),
+                    name=f"log-export-{request_id}",
+                )
+            continue

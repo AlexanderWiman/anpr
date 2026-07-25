@@ -150,6 +150,46 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def upload_log_export(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        hours: float | None = None,
+        line_count: int | None = None,
+        exported_at: str | None = None,
+        truncated: bool | None = None,
+        original_bytes: int | None = None,
+        compressed_bytes: int | None = None,
+        content_gzip_base64: str | None = None,
+        error: str | None = None,
+    ) -> dict:
+        url = self._settings.backend_log_exports_url
+        payload: dict = {
+            "requestId": request_id,
+            "status": status,
+        }
+        if hours is not None:
+            payload["hours"] = hours
+        if line_count is not None:
+            payload["lineCount"] = line_count
+        if exported_at:
+            payload["exportedAt"] = exported_at
+        if truncated is not None:
+            payload["truncated"] = truncated
+        if original_bytes is not None:
+            payload["originalBytes"] = original_bytes
+        if compressed_bytes is not None:
+            payload["compressedBytes"] = compressed_bytes
+        if content_gzip_base64:
+            payload["contentGzipBase64"] = content_gzip_base64
+        if error:
+            payload["error"] = error
+
+        response = await self._client.post(url, json=payload, timeout=60.0)
+        response.raise_for_status()
+        return response.json()
+
     async def fetch_expected_plates(self) -> dict:
         """Fetch today's expected registration numbers for this site."""
         url = self._settings.backend_expected_plates_url

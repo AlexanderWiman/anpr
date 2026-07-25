@@ -116,6 +116,59 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .update-banner {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      background: rgba(59, 130, 246, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .update-banner.hidden { display: none; }
+
+    .update-banner.running {
+      border-color: rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .update-banner.failed {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.08);
+    }
+
+    .update-banner-text {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .update-banner-text strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .btn-update {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-update:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     /* --- Hero control --- */
     .hero {
       margin-top: 16px;
@@ -662,6 +715,11 @@
       <p class="hero-msg" id="control-msg"></p>
     </section>
 
+    <div class="update-banner hidden" id="update-banner">
+      <div class="update-banner-text" id="update-banner-text">—</div>
+      <button class="btn-update" id="btn-update" type="button" onclick="startUpdate()">Uppdatera</button>
+    </div>
+
     <div class="metrics">
       <div class="metric metric-span-6">
         <div class="metric-label">Kameror</div>
@@ -771,6 +829,7 @@
             Pausa live
           </label>
           <button class="btn-ghost" onclick="refreshLogs(true)">Uppdatera</button>
+          <button class="btn-ghost" id="log-export-btn" onclick="exportLogs()">Skicka till IT</button>
         </div>
       </div>
       <div class="log-chips">
@@ -820,6 +879,107 @@
     let logBusy = false;
     let logPaused = false;
     let logSearchTimer = null;
+    let updateBusy = false;
+    let updatePollTimer = null;
+
+    function renderUpdateBanner(data) {
+      const banner = document.getElementById('update-banner');
+      const text = document.getElementById('update-banner-text');
+      const btn = document.getElementById('btn-update');
+      if (!banner || !text || !btn) return;
+
+      banner.classList.remove('running', 'failed');
+      const job = data?.job || null;
+      const jobStatus = job?.status;
+
+      if (jobStatus === 'running') {
+        banner.classList.remove('hidden');
+        banner.classList.add('running');
+        text.innerHTML = `<strong>Uppdaterar…</strong> ${escapeHtml(job.message || 'Det kan ta några minuter. Sidan kan tappa kontakten en stund.')}`;
+        btn.disabled = true;
+        btn.textContent = 'Uppdaterar…';
+        return;
+      }
+
+      if (jobStatus === 'failed') {
+        banner.classList.remove('hidden');
+        banner.classList.add('failed');
+        text.innerHTML = `<strong>Uppdatering misslyckades.</strong> ${escapeHtml(job.error || job.message || 'Försök igen eller kontakta IT.')}`;
+        btn.disabled = updateBusy;
+        btn.textContent = data.updateAvailable ? 'Försök igen' : 'Uppdatera';
+        btn.style.display = data.updateAvailable ? 'inline-block' : 'none';
+        return;
+      }
+
+      if (jobStatus === 'completed') {
+        const version = job.newVersion ? ` v${escapeHtml(job.newVersion)}` : '';
+        banner.classList.remove('hidden');
+        text.innerHTML = `<strong>Uppdatering klar${version}.</strong> Ladda om sidan om något ser konstigt ut.`;
+        btn.style.display = 'none';
+        return;
+      }
+
+      if (!data?.updateAvailable) {
+        banner.classList.add('hidden');
+        return;
+      }
+
+      const current = data.currentVersion ? `v${escapeHtml(data.currentVersion)}` : 'nuvarande version';
+      const remote = data.remoteVersion ? `v${escapeHtml(data.remoteVersion)}` : 'senaste';
+      banner.classList.remove('hidden');
+      text.innerHTML = `Ny version tillgänglig: <strong>${remote}</strong> (du har ${current}). Kamera och token behålls.`;
+      btn.style.display = 'inline-block';
+      btn.disabled = updateBusy;
+      btn.textContent = data.remoteVersion ? `Uppdatera till v${data.remoteVersion}` : 'Uppdatera';
+    }
+
+    async function refreshUpdateStatus() {
+      try {
+        const res = await fetch('/api/update/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderUpdateBanner(data);
+        return data;
+      } catch {
+        return null;
+      }
+    }
+
+    async function startUpdate() {
+      if (updateBusy) return;
+      const btn = document.getElementById('btn-update');
+      updateBusy = true;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Startar…';
+      }
+      try {
+        const res = await fetch('/api/update/start', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || 'Kunde inte starta uppdatering');
+        }
+        if (updatePollTimer) clearInterval(updatePollTimer);
+        updatePollTimer = setInterval(async () => {
+          const status = await refreshUpdateStatus();
+          const jobStatus = status?.job?.status;
+          if (jobStatus === 'running') return;
+          clearInterval(updatePollTimer);
+          updatePollTimer = null;
+          updateBusy = false;
+          if (jobStatus === 'completed') {
+            await loadVersion();
+            setTimeout(() => window.location.reload(), 1500);
+          }
+        }, 3000);
+        await refreshUpdateStatus();
+      } catch (err) {
+        setMsg(err instanceof Error ? err.message : 'Uppdatering misslyckades', false);
+        updateBusy = false;
+        if (btn) btn.disabled = false;
+        await refreshUpdateStatus();
+      }
+    }
 
     function escapeHtml(value) {
       return String(value)
@@ -932,6 +1092,33 @@
         document.getElementById('log-view').textContent = 'Kunde inte läsa loggar.';
       } finally {
         logBusy = false;
+      }
+    }
+
+    async function exportLogs() {
+      const btn = document.getElementById('log-export-btn');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      const previous = btn.textContent;
+      btn.textContent = 'Skickar…';
+      try {
+        const res = await fetch('/api/logs/export', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || 'Kunde inte skicka loggar');
+        }
+        btn.textContent = `Skickat (${data.lineCount || '?'} rader)`;
+        setTimeout(() => {
+          btn.textContent = previous;
+          btn.disabled = false;
+        }, 4000);
+        return;
+      } catch (err) {
+        btn.textContent = err instanceof Error ? err.message : 'Misslyckades';
+        setTimeout(() => {
+          btn.textContent = previous;
+          btn.disabled = false;
+        }, 4000);
       }
     }
 
@@ -1263,8 +1450,10 @@
 
     refresh();
     loadVersion();
+    refreshUpdateStatus();
     refreshLogs();
     setInterval(refresh, 5000);
+    setInterval(refreshUpdateStatus, 30000);
     setInterval(refreshLogs, 15000);
   </script>
 </body>
