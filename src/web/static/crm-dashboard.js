@@ -52,6 +52,7 @@
   let currentPage = "overview";
   let statusData = null;
   let eventsData = [];
+  let eventsUniqueOnly = false;
   let queueData = { queue: [], size: 0 };
   let settingsData = null;
   let updateData = null;
@@ -361,20 +362,105 @@
     previewTimers = [];
   }
 
-  function renderEvents(filter = "") {
+  function normalizePlate(plate) {
+    return String(plate || "").toUpperCase().replace(/\s+/g, "");
+  }
+
+  function filterEventsBySearch(events, filter = "") {
     const query = filter.trim().toUpperCase();
-    const rows = eventsData.filter((event) => !query || String(event.plate || "").toUpperCase().includes(query));
+    return events.filter((event) => !query || normalizePlate(event.plate).includes(query.replace(/\s+/g, "")));
+  }
+
+  function buildEventRows(events, { uniqueOnly = false } = {}) {
+    if (!uniqueOnly) {
+      return events.map((event) => ({ event, hits: 1 }));
+    }
+
+    const byPlate = new Map();
+    for (const event of events) {
+      const key = normalizePlate(event.plate);
+      if (!key) continue;
+      const existing = byPlate.get(key);
+      if (!existing) {
+        byPlate.set(key, { event, hits: 1 });
+      } else {
+        existing.hits += 1;
+      }
+    }
+    return Array.from(byPlate.values());
+  }
+
+  function renderEvents(filter = "") {
+    const filtered = filterEventsBySearch(eventsData, filter);
+    const rows = buildEventRows(filtered, { uniqueOnly: eventsUniqueOnly });
+    const title = $("events-title");
+    const meta = $("events-meta");
+    const copyBtn = $("event-copy-plates");
+    const uniqueBtn = $("event-unique-toggle");
+
+    if (title) {
+      title.textContent = eventsUniqueOnly ? "Unika regnr" : "Alla händelser";
+    }
+    if (uniqueBtn) {
+      uniqueBtn.classList.toggle("active", eventsUniqueOnly);
+    }
+    if (copyBtn) {
+      copyBtn.style.display = eventsUniqueOnly ? "inline-block" : "none";
+    }
+    if (meta) {
+      if (!filtered.length) {
+        meta.textContent = "";
+      } else if (eventsUniqueOnly) {
+        meta.textContent = `${rows.length} unika regnr av ${filtered.length} händelser`;
+      } else {
+        meta.textContent = `${filtered.length} händelser`;
+      }
+    }
+
+    const table = $("events-body")?.closest("table");
+    if (table) {
+      const head = table.querySelector("thead tr");
+      if (head) {
+        head.innerHTML = eventsUniqueOnly
+          ? "<th>Tid</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Gånger</th><th>Status</th>"
+          : "<th>Tid</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Status</th>";
+      }
+    }
+
+    const colSpan = eventsUniqueOnly ? 6 : 5;
     $("events-body").innerHTML = rows.length
-      ? rows.map((event) => `
+      ? rows.map(({ event, hits }) => `
         <tr>
           <td>${escapeHtml(fmtTime(event.capturedAt))}</td>
           <td class="mono">${escapeHtml(event.plate)}</td>
           <td>${escapeHtml(cameraLabel(event.cameraId))}</td>
           <td>${Math.round((event.confidence || 0) * 100)}%</td>
+          ${eventsUniqueOnly ? `<td>${hits}</td>` : ""}
           <td>${tag(event.status)}</td>
         </tr>
       `).join("")
-      : '<tr><td colspan="5" class="empty">Inga händelser ännu</td></tr>';
+      : `<tr><td colspan="${colSpan}" class="empty">Inga händelser ännu</td></tr>`;
+  }
+
+  async function copyUniquePlates() {
+    const filtered = filterEventsBySearch(eventsData, $("event-search")?.value || "");
+    const rows = buildEventRows(filtered, { uniqueOnly: true });
+    if (!rows.length) return;
+
+    const text = rows.map(({ event }) => event.plate).join("\n");
+    const button = $("event-copy-plates");
+    try {
+      await navigator.clipboard.writeText(text);
+      if (button) {
+        const previous = button.textContent;
+        button.textContent = "Kopierat!";
+        setTimeout(() => {
+          button.textContent = previous;
+        }, 2000);
+      }
+    } catch {
+      if (button) button.textContent = "Misslyckades";
+    }
   }
 
   function renderSystem() {
@@ -485,7 +571,7 @@
     try {
       const [status, events, queue] = await Promise.all([
         fetch("/api/status").then((response) => response.json()),
-        fetch("/api/events?limit=50").then((response) => response.json()),
+        fetch("/api/events?limit=200").then((response) => response.json()),
         fetch("/api/queue").then((response) => response.json()),
       ]);
       statusData = status;
@@ -672,6 +758,11 @@
     $("btn-start")?.addEventListener("click", startAgent);
     $("btn-stop")?.addEventListener("click", stopAgent);
     $("event-search")?.addEventListener("input", (event) => renderEvents(event.target.value));
+    $("event-unique-toggle")?.addEventListener("click", () => {
+      eventsUniqueOnly = !eventsUniqueOnly;
+      renderEvents($("event-search")?.value || "");
+    });
+    $("event-copy-plates")?.addEventListener("click", copyUniquePlates);
     $("log-search")?.addEventListener("input", () => {
       clearTimeout(logSearchTimer);
       logSearchTimer = setTimeout(() => refreshLogs(true), 300);
