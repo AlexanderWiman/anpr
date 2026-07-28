@@ -72,7 +72,10 @@ class Settings(BaseSettings):
     # Web dashboard + agent control
     health_host: str = Field(default="0.0.0.0", alias="HEALTH_HOST")
     health_port: int = Field(default=8080, alias="HEALTH_PORT")
-    web_history_size: int = Field(default=100, alias="WEB_HISTORY_SIZE")
+    web_history_size: int = Field(default=500, alias="WEB_HISTORY_SIZE")
+    web_history_retention_hours: float = Field(
+        default=48.0, alias="WEB_HISTORY_RETENTION_HOURS"
+    )
     agent_auto_start: bool = Field(default=False, alias="AGENT_AUTO_START")
 
     # Dev-only: fetch camera RTSP config from backend instead of local .env
@@ -166,6 +169,10 @@ class Settings(BaseSettings):
     @property
     def queue_file(self) -> Path:
         return self.events_dir / "pending_queue.json"
+
+    @property
+    def history_file(self) -> Path:
+        return self.events_dir / "dashboard-history.json"
 
     @property
     def backend_events_url(self) -> str:

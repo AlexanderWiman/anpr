@@ -64,7 +64,11 @@ class AnprAgent:
         self._provider = create_plate_provider(settings, booking_hints=self.booking_hints)
         self.deduplicator = PlateDeduplicator(settings)
         self._queue = EventQueue(settings.queue_file)
-        self.history = EventHistory(max_size=settings.web_history_size)
+        self.history = EventHistory(
+            max_size=settings.web_history_size,
+            history_file=settings.history_file,
+            retention_hours=settings.web_history_retention_hours,
+        )
         self.delivery = DeliveryService(
             settings, self._backend, self._queue, event_history=self.history
         )

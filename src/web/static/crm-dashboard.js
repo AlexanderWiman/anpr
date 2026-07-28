@@ -53,6 +53,7 @@
   let statusData = null;
   let eventsData = [];
   let eventsUniqueOnly = false;
+  let eventsTodayOnly = false;
   let queueData = { queue: [], size: 0 };
   let settingsData = null;
   let updateData = null;
@@ -366,9 +367,21 @@
     return String(plate || "").toUpperCase().replace(/\s+/g, "");
   }
 
+  function isToday(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return false;
+    const now = new Date();
+    return date.getFullYear() === now.getFullYear()
+      && date.getMonth() === now.getMonth()
+      && date.getDate() === now.getDate();
+  }
+
   function filterEventsBySearch(events, filter = "") {
     const query = filter.trim().toUpperCase();
-    return events.filter((event) => !query || normalizePlate(event.plate).includes(query.replace(/\s+/g, "")));
+    return events.filter((event) => {
+      if (eventsTodayOnly && !isToday(event.capturedAt)) return false;
+      return !query || normalizePlate(event.plate).includes(query.replace(/\s+/g, ""));
+    });
   }
 
   function buildEventRows(events, { uniqueOnly = false } = {}) {
@@ -397,12 +410,16 @@
     const meta = $("events-meta");
     const copyBtn = $("event-copy-plates");
     const uniqueBtn = $("event-unique-toggle");
+    const todayBtn = $("event-today-toggle");
 
     if (title) {
       title.textContent = eventsUniqueOnly ? "Unika regnr" : "Alla händelser";
     }
     if (uniqueBtn) {
       uniqueBtn.classList.toggle("active", eventsUniqueOnly);
+    }
+    if (todayBtn) {
+      todayBtn.classList.toggle("active", eventsTodayOnly);
     }
     if (copyBtn) {
       copyBtn.style.display = eventsUniqueOnly ? "inline-block" : "none";
@@ -411,9 +428,9 @@
       if (!filtered.length) {
         meta.textContent = "";
       } else if (eventsUniqueOnly) {
-        meta.textContent = `${rows.length} unika regnr av ${filtered.length} händelser`;
+        meta.textContent = `${rows.length} unika regnr av ${filtered.length} händelser${eventsTodayOnly ? " idag" : ""}`;
       } else {
-        meta.textContent = `${filtered.length} händelser`;
+        meta.textContent = `${filtered.length} händelser${eventsTodayOnly ? " idag" : ""}`;
       }
     }
 
@@ -760,6 +777,10 @@
     $("event-search")?.addEventListener("input", (event) => renderEvents(event.target.value));
     $("event-unique-toggle")?.addEventListener("click", () => {
       eventsUniqueOnly = !eventsUniqueOnly;
+      renderEvents($("event-search")?.value || "");
+    });
+    $("event-today-toggle")?.addEventListener("click", () => {
+      eventsTodayOnly = !eventsTodayOnly;
       renderEvents($("event-search")?.value || "");
     });
     $("event-copy-plates")?.addEventListener("click", copyUniquePlates);
