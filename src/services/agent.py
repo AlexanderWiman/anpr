@@ -18,6 +18,7 @@ from src.services.backend_client import BackendClient
 from src.services.booking_hints import BookingHintService
 from src.services.camera_pipeline import CameraPipeline
 from src.services.delivery import DeliveryService
+from src.services.delivery_log import DeliveryLog
 from src.services.event_history import EventHistory
 from src.services.heartbeat import HeartbeatService
 from src.services.remote_camera_config import RemoteCameraConfigService
@@ -69,8 +70,17 @@ class AnprAgent:
             history_file=settings.history_file,
             retention_hours=settings.web_history_retention_hours,
         )
+        self.delivery_log = DeliveryLog(
+            settings.delivery_log_file,
+            max_size=settings.delivery_log_size,
+            retention_hours=settings.delivery_log_retention_hours,
+        )
         self.delivery = DeliveryService(
-            settings, self._backend, self._queue, event_history=self.history
+            settings,
+            self._backend,
+            self._queue,
+            event_history=self.history,
+            delivery_log=self.delivery_log,
         )
         self.controller = AgentController(self)
         self.remote_camera_config = RemoteCameraConfigService(self)

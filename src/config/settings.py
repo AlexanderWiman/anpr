@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     web_history_retention_hours: float = Field(
         default=48.0, alias="WEB_HISTORY_RETENTION_HOURS"
     )
+    delivery_log_size: int = Field(default=2000, alias="DELIVERY_LOG_SIZE")
+    delivery_log_retention_hours: float = Field(
+        default=168.0, alias="DELIVERY_LOG_RETENTION_HOURS"
+    )
     agent_auto_start: bool = Field(default=False, alias="AGENT_AUTO_START")
 
     # Dev-only: fetch camera RTSP config from backend instead of local .env
@@ -173,6 +177,10 @@ class Settings(BaseSettings):
     @property
     def history_file(self) -> Path:
         return self.events_dir / "dashboard-history.json"
+
+    @property
+    def delivery_log_file(self) -> Path:
+        return self.events_dir / "crm-deliveries.json"
 
     @property
     def backend_events_url(self) -> str:

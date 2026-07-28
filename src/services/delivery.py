@@ -8,6 +8,7 @@ from src.config.settings import Settings
 from src.models.event import AnprEvent, QueuedEvent
 from src.queue.event_queue import EventQueue
 from src.services.backend_client import BackendClient, BackendStatus
+from src.services.delivery_log import DeliveryLog
 from src.services.event_history import EventHistory
 from src.utils.logging import get_logger
 
@@ -27,15 +28,17 @@ class DeliveryService:
         backend: BackendClient,
         queue: EventQueue,
         event_history: EventHistory | None = None,
+        delivery_log: DeliveryLog | None = None,
     ) -> None:
         self._settings = settings
         self._backend = backend
         self._queue = queue
         self._history = event_history
+        self._delivery_log = delivery_log
         self._backend_reachable = False
         self._backend_status = BackendStatus(False, "unknown", "Kontrollerar backend…")
         self._backend_status_checked_at: float | None = None
-        self._deliveries_succeeded = 0
+        self._deliveries_succeeded = delivery_log.total_delivered if delivery_log else 0
         self._deliveries_failed = 0
 
     @property
@@ -108,6 +111,8 @@ class DeliveryService:
             await self._backend.send_anpr_event(queued.event)
             self._backend_reachable = True
             self._deliveries_succeeded += 1
+            if self._delivery_log is not None:
+                self._delivery_log.record(queued.event)
             return True
         except httpx.HTTPError as exc:
             self._backend_reachable = False

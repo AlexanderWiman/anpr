@@ -15,6 +15,7 @@ def _agent(tmp_path):
     agent.pipelines = {"hall-1": MagicMock()}
     agent.history.list_recent.return_value = []
     agent.queue.all_events.return_value = []
+    agent.delivery_log.list_recent.return_value = []
     agent.delivery.refresh_backend_status = MagicMock()
     agent.delivery.queue_size = 0
     agent.delivery.stats = {"deliveries_succeeded": 0, "deliveries_failed": 0}
@@ -55,3 +56,29 @@ def test_crm_dashboard_served_at_root(tmp_path):
     assert response.status_code == 200
     assert "ANPR Edge" in response.text
     assert "crm-dashboard.js" in response.text
+
+
+def test_deliveries_endpoint_returns_crm_log(tmp_path):
+    agent = _agent(tmp_path)
+    agent.delivery_log.list_recent.return_value = [
+        {
+            "id": "abc",
+            "plate": "XYZ789",
+            "confidence": 0.88,
+            "provider": "yolo_ocr",
+            "siteId": "borlange",
+            "cameraId": "entrance-1",
+            "direction": "entry",
+            "capturedAt": "2026-07-28T09:15:00+00:00",
+            "deliveredAt": "2026-07-28T09:15:05+00:00",
+            "status": "delivered",
+        }
+    ]
+    client = TestClient(create_web_app(agent, datetime.now(timezone.utc)))
+
+    response = client.get("/api/deliveries?limit=50")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deliveries"][0]["plate"] == "XYZ789"
+    agent.delivery_log.list_recent.assert_called_once_with(limit=50)

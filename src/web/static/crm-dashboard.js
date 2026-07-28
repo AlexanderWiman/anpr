@@ -5,7 +5,7 @@
       items: [
         { id: "overview", label: "Översikt", icon: "◫", title: "Översikt", subtitle: "Driftstatus och snabbkontroller" },
         { id: "cameras", label: "Kameror", icon: "◎", title: "Kameror", subtitle: "Live-förhandsbild och anslutningsstatus" },
-        { id: "events", label: "Händelser", icon: "≡", title: "Händelser", subtitle: "Detekteringar och leveranser" },
+        { id: "events", label: "Händelser", icon: "≡", title: "Händelser", subtitle: "Detekteringar och leveranser till CRM" },
       ],
     },
     {
@@ -52,8 +52,10 @@
   let currentPage = "overview";
   let statusData = null;
   let eventsData = [];
+  let deliveriesData = [];
   let eventsUniqueOnly = false;
   let eventsTodayOnly = false;
+  let eventsCrmOnly = false;
   let queueData = { queue: [], size: 0 };
   let settingsData = null;
   let updateData = null;
@@ -367,6 +369,10 @@
     return String(plate || "").toUpperCase().replace(/\s+/g, "");
   }
 
+  function eventTimestamp(event) {
+    return event.deliveredAt || event.capturedAt;
+  }
+
   function isToday(iso) {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return false;
@@ -379,9 +385,13 @@
   function filterEventsBySearch(events, filter = "") {
     const query = filter.trim().toUpperCase();
     return events.filter((event) => {
-      if (eventsTodayOnly && !isToday(event.capturedAt)) return false;
+      if (eventsTodayOnly && !isToday(eventTimestamp(event))) return false;
       return !query || normalizePlate(event.plate).includes(query.replace(/\s+/g, ""));
     });
+  }
+
+  function activeEventsData() {
+    return eventsCrmOnly ? deliveriesData : eventsData;
   }
 
   function buildEventRows(events, { uniqueOnly = false } = {}) {
@@ -404,16 +414,22 @@
   }
 
   function renderEvents(filter = "") {
-    const filtered = filterEventsBySearch(eventsData, filter);
+    const source = activeEventsData();
+    const filtered = filterEventsBySearch(source, filter);
     const rows = buildEventRows(filtered, { uniqueOnly: eventsUniqueOnly });
     const title = $("events-title");
     const meta = $("events-meta");
     const copyBtn = $("event-copy-plates");
     const uniqueBtn = $("event-unique-toggle");
     const todayBtn = $("event-today-toggle");
+    const crmBtn = $("event-crm-toggle");
 
     if (title) {
-      title.textContent = eventsUniqueOnly ? "Unika regnr" : "Alla händelser";
+      if (eventsCrmOnly) {
+        title.textContent = eventsUniqueOnly ? "Unika regnr (CRM)" : "Skickade till CRM";
+      } else {
+        title.textContent = eventsUniqueOnly ? "Unika regnr" : "Alla händelser";
+      }
     }
     if (uniqueBtn) {
       uniqueBtn.classList.toggle("active", eventsUniqueOnly);
@@ -421,46 +437,54 @@
     if (todayBtn) {
       todayBtn.classList.toggle("active", eventsTodayOnly);
     }
+    if (crmBtn) {
+      crmBtn.classList.toggle("active", eventsCrmOnly);
+    }
     if (copyBtn) {
       copyBtn.style.display = eventsUniqueOnly ? "inline-block" : "none";
     }
     if (meta) {
+      const scope = eventsCrmOnly ? "leveranser" : "händelser";
       if (!filtered.length) {
         meta.textContent = "";
       } else if (eventsUniqueOnly) {
-        meta.textContent = `${rows.length} unika regnr av ${filtered.length} händelser${eventsTodayOnly ? " idag" : ""}`;
+        meta.textContent = `${rows.length} unika regnr av ${filtered.length} ${scope}${eventsTodayOnly ? " idag" : ""}`;
       } else {
-        meta.textContent = `${filtered.length} händelser${eventsTodayOnly ? " idag" : ""}`;
+        meta.textContent = `${filtered.length} ${scope}${eventsTodayOnly ? " idag" : ""}`;
       }
     }
 
+    const timeLabel = eventsCrmOnly ? "Skickad" : "Tid";
     const table = $("events-body")?.closest("table");
     if (table) {
       const head = table.querySelector("thead tr");
       if (head) {
         head.innerHTML = eventsUniqueOnly
-          ? "<th>Tid</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Gånger</th><th>Status</th>"
-          : "<th>Tid</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Status</th>";
+          ? `<th>${timeLabel}</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Gånger</th><th>Status</th>`
+          : `<th>${timeLabel}</th><th>Regnr</th><th>Kamera</th><th>Säkerhet</th><th>Status</th>`;
       }
     }
 
     const colSpan = eventsUniqueOnly ? 6 : 5;
+    const emptyText = eventsCrmOnly
+      ? "Inga leveranser till CRM ännu"
+      : "Inga händelser ännu";
     $("events-body").innerHTML = rows.length
       ? rows.map(({ event, hits }) => `
         <tr>
-          <td>${escapeHtml(fmtTime(event.capturedAt))}</td>
+          <td>${escapeHtml(fmtTime(eventTimestamp(event)))}</td>
           <td class="mono">${escapeHtml(event.plate)}</td>
           <td>${escapeHtml(cameraLabel(event.cameraId))}</td>
           <td>${Math.round((event.confidence || 0) * 100)}%</td>
           ${eventsUniqueOnly ? `<td>${hits}</td>` : ""}
-          <td>${tag(event.status)}</td>
+          <td>${tag(event.status || "delivered")}</td>
         </tr>
       `).join("")
-      : `<tr><td colspan="${colSpan}" class="empty">Inga händelser ännu</td></tr>`;
+      : `<tr><td colspan="${colSpan}" class="empty">${emptyText}</td></tr>`;
   }
 
   async function copyUniquePlates() {
-    const filtered = filterEventsBySearch(eventsData, $("event-search")?.value || "");
+    const filtered = filterEventsBySearch(activeEventsData(), $("event-search")?.value || "");
     const rows = buildEventRows(filtered, { uniqueOnly: true });
     if (!rows.length) return;
 
@@ -586,13 +610,15 @@
 
   async function refreshStatus() {
     try {
-      const [status, events, queue] = await Promise.all([
+      const [status, events, deliveries, queue] = await Promise.all([
         fetch("/api/status").then((response) => response.json()),
         fetch("/api/events?limit=200").then((response) => response.json()),
+        fetch("/api/deliveries?limit=200").then((response) => response.json()),
         fetch("/api/queue").then((response) => response.json()),
       ]);
       statusData = status;
       eventsData = events.events || [];
+      deliveriesData = deliveries.deliveries || [];
       queueData = queue;
       renderHeader();
       renderHero();
@@ -781,6 +807,10 @@
     });
     $("event-today-toggle")?.addEventListener("click", () => {
       eventsTodayOnly = !eventsTodayOnly;
+      renderEvents($("event-search")?.value || "");
+    });
+    $("event-crm-toggle")?.addEventListener("click", () => {
+      eventsCrmOnly = !eventsCrmOnly;
       renderEvents($("event-search")?.value || "");
     });
     $("event-copy-plates")?.addEventListener("click", copyUniquePlates);

@@ -87,6 +87,10 @@ def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
     async def api_events(limit: int = 50):
         return {"events": agent.history.list_recent(limit=limit)}
 
+    @app.get("/api/deliveries")
+    async def api_deliveries(limit: int = 200):
+        return {"deliveries": agent.delivery_log.list_recent(limit=limit)}
+
     @app.get("/api/queue")
     async def api_queue():
         pending = []
