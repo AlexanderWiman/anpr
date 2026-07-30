@@ -108,6 +108,19 @@ def is_plausible_ocr_plate(
     return True
 
 
+def _is_near_plate_match(candidate: str, expected: str) -> bool:
+    """True when plates share digit suffix and differ by at most 2 prefix letters."""
+    cand = normalize_plate(candidate)
+    exp = normalize_plate(expected)
+    if cand == exp:
+        return True
+    cand_suffix = plate_suffix(cand)
+    exp_suffix = plate_suffix(exp)
+    if not cand_suffix or cand_suffix != exp_suffix:
+        return False
+    return prefix_letter_distance(cand, exp) <= 2
+
+
 def resolve_with_booking_hints(
     candidates: list[tuple[str, float]],
     expected_plates: frozenset[str],
@@ -115,30 +128,46 @@ def resolve_with_booking_hints(
     """
     Pick the best OCR candidate using today's booking list.
 
-    Used only when OCR is ambiguous — never rejects unknown vehicles.
+    Used only when OCR is ambiguous or a near letter-misread of a booking.
+    Never rewrites a clear majority read of a different plate into today's booking
+    (avoids ghost detections when only one car is booked).
     """
+    from collections import Counter
+
     if not candidates or not expected_plates:
         return None
 
     normalized = [(normalize_plate(p), c) for p, c in candidates]
+    counts = Counter(p for p, _ in normalized)
+    leader, leader_hits = counts.most_common(1)[0]
+    expected = {normalize_plate(p) for p in expected_plates}
 
-    exact = [(p, c) for p, c in normalized if p in expected_plates]
+    if leader in expected:
+        return leader, max(c for p, c in normalized if p == leader)
+
+    # Strong OCR consensus on another vehicle — do not invent the booked plate.
+    # Only allow a near letter-fix (POE797 → PUE797) against that majority.
+    if leader_hits >= 2:
+        near = [
+            exp
+            for exp in expected
+            if _is_near_plate_match(leader, exp)
+        ]
+        if len(near) == 1:
+            return near[0], max(c for p, c in normalized if p == leader)
+        return None
+
+    exact = [(p, c) for p, c in normalized if p in expected]
     if len(exact) == 1:
         return exact[0]
     if len(exact) > 1:
         return max(exact, key=lambda item: item[1])
 
     fuzzy_matches: list[tuple[str, float]] = []
-    for expected in expected_plates:
-        exp_suffix = plate_suffix(expected)
-        if exp_suffix is None:
-            continue
+    for exp in expected:
         for plate, conf in normalized:
-            if plate_suffix(plate) != exp_suffix:
-                continue
-            if prefix_letter_distance(plate, expected) > 2:
-                continue
-            fuzzy_matches.append((expected, conf))
+            if _is_near_plate_match(plate, exp):
+                fuzzy_matches.append((exp, conf))
 
     if len(fuzzy_matches) == 1:
         return fuzzy_matches[0]
@@ -152,3 +181,16 @@ def resolve_with_booking_hints(
         return plate, max(by_expected[plate])
 
     return None
+
+
+def booking_hint_agreement(
+    candidates: list[tuple[str, float]],
+    resolved_plate: str,
+) -> int:
+    """Count OCR variants that support a booking-resolved plate (exact or near)."""
+    plate = normalize_plate(resolved_plate)
+    return sum(
+        1
+        for raw, _ in candidates
+        if _is_near_plate_match(raw, plate)
+    )

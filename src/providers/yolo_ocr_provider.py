@@ -148,14 +148,14 @@ class YoloOcrPlateProvider(PlateProvider):
             had_detections=bool(detections),
         ):
             # Top ROI misses plates near the bottom (parked close to camera).
-            # Periodic stills share this path — fallback covers those too.
-            fallback_conf = max(0.08, self._settings.yolo_confidence - 0.05)
+            # Use a strict quality gate here — the milder ROI gate + low YOLO
+            # threshold produced a TWJ52P ghost on a different car (Falun 21:00).
             logger.info(
                 "ROI empty — full-frame fallback",
                 extra={
                     "event": "detection_roi_fallback",
                     "path": image_path,
-                    "yolo_confidence": fallback_conf,
+                    "yolo_confidence": self._settings.yolo_confidence,
                 },
             )
             detections = self._detect_pass(
@@ -163,9 +163,9 @@ class YoloOcrPlateProvider(PlateProvider):
                 image_path=image_path,
                 use_roi=False,
                 min_conf=min_conf,
-                roi_enabled=True,  # keep milder quality gate for ROI sites
+                roi_enabled=False,  # strict gate for close-up / bottom-edge reads
                 pass_name="full_fallback",
-                yolo_confidence=fallback_conf,
+                yolo_confidence=self._settings.yolo_confidence,
             )
 
         if not detections:
@@ -290,10 +290,12 @@ class YoloOcrPlateProvider(PlateProvider):
         if self._booking_hints is not None:
             hinted = self._booking_hints.resolve_candidates(candidates)
             if hinted is not None:
+                from src.utils.plates import booking_hint_agreement
+
                 plate, conf = hinted
-                agreement = sum(
-                    1 for p, _ in candidates if normalize_plate(p) == normalize_plate(plate)
-                )
+                # Real supporting reads only — do not inflate to 2 (that caused
+                # ghost deliveries of today's booking when OCR mostly saw another car).
+                agreement = booking_hint_agreement(candidates, plate)
                 logger.info(
                     "plate resolved via booking hints",
                     extra={
@@ -301,9 +303,10 @@ class YoloOcrPlateProvider(PlateProvider):
                         "plate": plate,
                         "confidence": conf,
                         "agreement": agreement,
+                        "candidates": [normalize_plate(p) for p, _ in candidates],
                     },
                 )
-                return plate, conf, max(agreement, 2)
+                return plate, conf, agreement
 
         plate, conf, agreement = self._pick_best_ocr_candidate(candidates)
         if agreement >= 2:
