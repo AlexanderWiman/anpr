@@ -63,3 +63,24 @@ def map_box_from_roi(
         int(round(x2 / scale)),
         int(round(y2 / scale)) + y_offset,
     )
+
+
+def should_full_frame_fallback(
+    *,
+    roi_enabled: bool,
+    frame_height: int,
+    top_fraction: float,
+    had_detections: bool,
+) -> bool:
+    """
+    True when top-ROI was active but found nothing — retry full frame.
+
+    Covers parked cars whose plates sit near the bottom edge (outside top ROI).
+    Periodic stills use the same detector path, so they need this too.
+    """
+    if had_detections or not roi_enabled or frame_height <= 0:
+        return False
+    _, y_end = detection_roi_slice(
+        frame_height, enabled=True, top_fraction=top_fraction
+    )
+    return 0 < y_end < frame_height

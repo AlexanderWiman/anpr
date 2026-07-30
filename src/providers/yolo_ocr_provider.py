@@ -126,13 +126,76 @@ class YoloOcrPlateProvider(PlateProvider):
             return []
 
         image = self._resize(image, max_width=self._settings.yolo_max_image_width)
-        detect_image, y_offset, scale = self._apply_detection_roi(image)
         min_conf = min(self._settings.min_confidence, self._settings.ocr_min_confidence)
         roi_enabled = self._settings.detection_roi_enabled
 
+        detections = self._detect_pass(
+            image,
+            image_path=image_path,
+            use_roi=roi_enabled,
+            min_conf=min_conf,
+            roi_enabled=roi_enabled,
+            pass_name="roi" if roi_enabled else "full",
+            yolo_confidence=self._settings.yolo_confidence,
+        )
+
+        from src.utils.detection_roi import should_full_frame_fallback
+
+        if should_full_frame_fallback(
+            roi_enabled=roi_enabled,
+            frame_height=image.shape[0],
+            top_fraction=self._settings.detection_roi_top_fraction,
+            had_detections=bool(detections),
+        ):
+            # Top ROI misses plates near the bottom (parked close to camera).
+            # Periodic stills share this path — fallback covers those too.
+            fallback_conf = max(0.08, self._settings.yolo_confidence - 0.05)
+            logger.info(
+                "ROI empty — full-frame fallback",
+                extra={
+                    "event": "detection_roi_fallback",
+                    "path": image_path,
+                    "yolo_confidence": fallback_conf,
+                },
+            )
+            detections = self._detect_pass(
+                image,
+                image_path=image_path,
+                use_roi=False,
+                min_conf=min_conf,
+                roi_enabled=True,  # keep milder quality gate for ROI sites
+                pass_name="full_fallback",
+                yolo_confidence=fallback_conf,
+            )
+
+        if not detections:
+            logger.debug(
+                "no plate in frame",
+                extra={"event": "detection_empty", "path": image_path},
+            )
+            return []
+
+        # One best read per frame — avoids duplicate boxes creating noise.
+        best = max(detections, key=lambda d: d.confidence)
+        return [best]
+
+    def _detect_pass(
+        self,
+        image: "np.ndarray",
+        *,
+        image_path: str,
+        use_roi: bool,
+        min_conf: float,
+        roi_enabled: bool,
+        pass_name: str,
+        yolo_confidence: float,
+    ) -> list[PlateDetection]:
+        detect_image, y_offset, scale = self._apply_detection_roi(
+            image, force_full=not use_roi
+        )
         results = self._detector.predict(
             source=detect_image,
-            conf=self._settings.yolo_confidence,
+            conf=yolo_confidence,
             verbose=False,
         )
 
@@ -178,6 +241,7 @@ class YoloOcrPlateProvider(PlateProvider):
                             "combined": combined,
                             "ocr_agreement": ocr_agreement,
                             "detection_roi": roi_enabled,
+                            "detection_pass": pass_name,
                         },
                     )
                     continue
@@ -201,21 +265,13 @@ class YoloOcrPlateProvider(PlateProvider):
                         "ocr_confidence": ocr_conf,
                         "provider": self.name,
                         "image_path": image_path,
-                        "detection_roi": roi_enabled,
+                        "detection_roi": use_roi,
+                        "detection_pass": pass_name,
                         "roi_scale": round(scale, 3),
                     },
                 )
 
-        if not detections:
-            logger.debug(
-                "no plate in frame",
-                extra={"event": "detection_empty", "path": image_path},
-            )
-            return []
-
-        # One best read per frame — avoids duplicate boxes creating noise.
-        best = max(detections, key=lambda d: d.confidence)
-        return [best]
+        return detections
 
     def _run_ocr(self, crop: np.ndarray) -> tuple[str, float, int]:
         candidates: list[tuple[str, float]] = []
@@ -388,12 +444,13 @@ class YoloOcrPlateProvider(PlateProvider):
         return crop, x1, y1, x2 - x1, y2 - y1
 
     def _apply_detection_roi(
-        self, image: np.ndarray
+        self, image: np.ndarray, *, force_full: bool = False
     ) -> tuple[np.ndarray, int, float]:
         """
         Optionally crop + upscale the top portion of the frame before YOLO.
 
         Enabled only when DETECTION_ROI_ENABLED=true for this site.
+        force_full=True skips cropping (used by full-frame fallback).
         Returns (image_for_yolo, y_offset, scale).
         """
         import cv2
@@ -402,7 +459,7 @@ class YoloOcrPlateProvider(PlateProvider):
 
         y_start, y_end = detection_roi_slice(
             image.shape[0],
-            enabled=self._settings.detection_roi_enabled,
+            enabled=self._settings.detection_roi_enabled and not force_full,
             top_fraction=self._settings.detection_roi_top_fraction,
         )
         if y_start == 0 and y_end == image.shape[0]:

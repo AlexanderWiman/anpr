@@ -3,6 +3,7 @@ from src.utils.detection_roi import (
     detection_roi_slice,
     map_box_from_roi,
     roi_upscale_factor,
+    should_full_frame_fallback,
 )
 
 
@@ -34,3 +35,24 @@ def test_roi_upscale_factor_enlarges_narrow_roi():
 
 def test_map_box_from_roi_undoes_scale_and_offset():
     assert map_box_from_roi(100, 40, 200, 80, y_offset=10, scale=2.0) == (50, 30, 100, 50)
+
+
+def test_should_full_frame_fallback_when_roi_empty():
+    assert should_full_frame_fallback(
+        roi_enabled=True,
+        frame_height=576,
+        top_fraction=0.35,
+        had_detections=False,
+    )
+    assert not should_full_frame_fallback(
+        roi_enabled=True,
+        frame_height=576,
+        top_fraction=0.35,
+        had_detections=True,
+    )
+    assert not should_full_frame_fallback(
+        roi_enabled=False,
+        frame_height=576,
+        top_fraction=0.35,
+        had_detections=False,
+    )
