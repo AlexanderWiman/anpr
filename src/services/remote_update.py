@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
 
 def update_result_path() -> Path:
     from installer.engine import support_dir
 
     return support_dir() / "update-result.json"
+
+
+def clear_update_result() -> None:
+    path = update_result_path()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def load_pending_update_result() -> dict | None:
@@ -31,20 +45,24 @@ def load_pending_update_result() -> dict | None:
     status = payload.get("status")
     if not request_id or status not in {"in_progress", "completed", "failed"}:
         return None
+    # Backend rejects non-UUID requestIds and that used to block ALL heartbeats
+    # (CRM shows PC offline). Drop invalid leftovers from manual-* update IDs.
+    if not _UUID_RE.match(str(request_id)):
+        logger.warning(
+            "discarding update-result with non-UUID requestId",
+            extra={
+                "event": "update_result_discarded",
+                "request_id": str(request_id),
+            },
+        )
+        clear_update_result()
+        return None
     return {
         "requestId": str(request_id),
         "status": status,
         "error": payload.get("error"),
         "newVersion": payload.get("newVersion"),
     }
-
-
-def clear_update_result() -> None:
-    path = update_result_path()
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def _python_executable() -> str:

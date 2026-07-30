@@ -32,7 +32,9 @@ def main(argv: list[str] | None = None) -> int:
         target_version = target_version or info["version"]
         download_url = download_url or info["downloadUrl"]
 
-    request_id = f"manual-{uuid.uuid4().hex[:8]}"
+    # Must be a real UUID — backend heartbeat schema rejects non-UUID requestIds
+    # and a stuck update-result.json would otherwise block all heartbeats.
+    request_id = str(uuid.uuid4())
     try:
         run_remote_update_job(
             request_id,
