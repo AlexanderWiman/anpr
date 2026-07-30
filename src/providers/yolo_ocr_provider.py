@@ -11,6 +11,7 @@ from src.models.detection import BoundingBox, PlateDetection
 from src.providers.base import PlateProvider
 from src.utils.logging import get_logger
 from src.utils.plates import is_valid_swedish_plate, normalize_plate
+from src.utils.detection_roi import map_box_from_roi
 
 if TYPE_CHECKING:
     import numpy as np
@@ -125,8 +126,9 @@ class YoloOcrPlateProvider(PlateProvider):
             return []
 
         image = self._resize(image, max_width=self._settings.yolo_max_image_width)
-        detect_image, y_offset = self._apply_detection_roi(image)
+        detect_image, y_offset, scale = self._apply_detection_roi(image)
         min_conf = min(self._settings.min_confidence, self._settings.ocr_min_confidence)
+        roi_enabled = self._settings.detection_roi_enabled
 
         results = self._detector.predict(
             source=detect_image,
@@ -144,8 +146,9 @@ class YoloOcrPlateProvider(PlateProvider):
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 yolo_conf = float(box.conf[0])
-                y1 += y_offset
-                y2 += y_offset
+                x1, y1, x2, y2 = map_box_from_roi(
+                    x1, y1, x2, y2, y_offset=y_offset, scale=scale
+                )
 
                 crop, x1, y1, bw, bh = self._extract_crop(image, x1, y1, x2, y2)
                 if crop is None:
@@ -158,7 +161,13 @@ class YoloOcrPlateProvider(PlateProvider):
                     continue
 
                 combined = round((yolo_conf + ocr_conf) / 2, 4)
-                if not self._passes_quality_gate(yolo_conf, combined, ocr_agreement, min_conf):
+                if not self._passes_quality_gate(
+                    yolo_conf,
+                    combined,
+                    ocr_agreement,
+                    min_conf,
+                    roi_enabled=roi_enabled,
+                ):
                     logger.debug(
                         "detection filtered by quality gate",
                         extra={
@@ -168,6 +177,7 @@ class YoloOcrPlateProvider(PlateProvider):
                             "ocr_confidence": ocr_conf,
                             "combined": combined,
                             "ocr_agreement": ocr_agreement,
+                            "detection_roi": roi_enabled,
                         },
                     )
                     continue
@@ -191,7 +201,8 @@ class YoloOcrPlateProvider(PlateProvider):
                         "ocr_confidence": ocr_conf,
                         "provider": self.name,
                         "image_path": image_path,
-                        "detection_roi": self._settings.detection_roi_enabled,
+                        "detection_roi": roi_enabled,
+                        "roi_scale": round(scale, 3),
                     },
                 )
 
@@ -277,13 +288,23 @@ class YoloOcrPlateProvider(PlateProvider):
         combined: float,
         ocr_agreement: int,
         min_conf: float,
+        *,
+        roi_enabled: bool = False,
     ) -> bool:
         """Reject single-variant OCR guesses and low-confidence noise."""
-        if combined < min_conf:
-            return False
-
         # Always require at least 2 OCR variants to agree (blocks JSX656 etc.).
         if ocr_agreement < 2:
+            return False
+
+        if roi_enabled:
+            # Distant plates in wide halls often score lower on YOLO even when OCR is correct.
+            if combined < max(0.48, min_conf - 0.07):
+                return False
+            if ocr_agreement >= 3:
+                return yolo_conf >= 0.28 or combined >= 0.58
+            return yolo_conf >= 0.22 and combined >= 0.50
+
+        if combined < min_conf:
             return False
 
         if ocr_agreement >= 3:
@@ -366,14 +387,18 @@ class YoloOcrPlateProvider(PlateProvider):
             return None, x1, y1, 0, 0
         return crop, x1, y1, x2 - x1, y2 - y1
 
-    def _apply_detection_roi(self, image: np.ndarray) -> tuple[np.ndarray, int]:
+    def _apply_detection_roi(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, int, float]:
         """
-        Optionally crop to the top portion of the frame before YOLO.
+        Optionally crop + upscale the top portion of the frame before YOLO.
 
         Enabled only when DETECTION_ROI_ENABLED=true for this site.
-        Returns (image_for_yolo, y_offset) so boxes can be mapped back.
+        Returns (image_for_yolo, y_offset, scale).
         """
-        from src.utils.detection_roi import detection_roi_slice
+        import cv2
+
+        from src.utils.detection_roi import detection_roi_slice, roi_upscale_factor
 
         y_start, y_end = detection_roi_slice(
             image.shape[0],
@@ -381,8 +406,20 @@ class YoloOcrPlateProvider(PlateProvider):
             top_fraction=self._settings.detection_roi_top_fraction,
         )
         if y_start == 0 and y_end == image.shape[0]:
-            return image, 0
-        return image[y_start:y_end, :], y_start
+            return image, 0, 1.0
+
+        cropped = image[y_start:y_end, :]
+        scale = roi_upscale_factor(
+            cropped.shape[1],
+            target_width=self._settings.yolo_max_image_width,
+        )
+        if scale <= 1.0:
+            return cropped, y_start, 1.0
+
+        width = int(round(cropped.shape[1] * scale))
+        height = int(round(cropped.shape[0] * scale))
+        upscaled = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_CUBIC)
+        return upscaled, y_start, scale
 
     @staticmethod
     def _resize(image: np.ndarray, max_width: int = 1280) -> np.ndarray:

@@ -36,3 +36,30 @@ def detection_roi_slice(
     if y_end >= height:
         return 0, height
     return 0, y_end
+
+
+def roi_upscale_factor(width: int, *, target_width: int) -> float:
+    """Scale ROI so distant plates occupy more pixels for YOLO."""
+    if width <= 0 or target_width <= 0 or width >= target_width:
+        return 1.0
+    return target_width / width
+
+
+def map_box_from_roi(
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    *,
+    y_offset: int,
+    scale: float,
+) -> tuple[int, int, int, int]:
+    """Map YOLO box coords from (possibly upscaled) ROI back to full-frame pixels."""
+    if scale <= 0:
+        scale = 1.0
+    return (
+        int(round(x1 / scale)),
+        int(round(y1 / scale)) + y_offset,
+        int(round(x2 / scale)),
+        int(round(y2 / scale)) + y_offset,
+    )
