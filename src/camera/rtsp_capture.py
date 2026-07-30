@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from src.camera.frame_io import frame_filename, save_frame
-from src.services.camera_preview import write_camera_preview
 
 from src.camera.base import CameraStatus, FrameCaptureService
 from src.config.cameras import CameraConfig
@@ -30,6 +29,7 @@ class RTSPCaptureService(FrameCaptureService):
         self._last_frame_at: datetime | None = None
         self._frames_captured = 0
         self._last_error_reason: str | None = None
+        self._consecutive_empty_frames = 0
         self._lock = asyncio.Lock()
 
     @property
@@ -147,6 +147,7 @@ class RTSPCaptureService(FrameCaptureService):
 
             self._capture = cap
             self._status = CameraStatus.CONNECTED
+            self._consecutive_empty_frames = 0
             self._clear_error()
             logger.info(
                 "camera connected",
@@ -188,12 +189,26 @@ class RTSPCaptureService(FrameCaptureService):
                 return None
 
             if not ret or frame is None:
+                self._consecutive_empty_frames += 1
                 self._set_error("empty_frame")
                 logger.warning(
                     "frame read failed",
-                    extra={"event": "camera_error", "reason": "empty_frame"},
+                    extra={
+                        "event": "camera_error",
+                        "reason": "empty_frame",
+                        "consecutive": self._consecutive_empty_frames,
+                    },
                 )
-                if self._capture is None or not self._capture.isOpened():
+                # OpenCV can keep isOpened() true on a dead Tapo stream after the
+                # first frame — force reconnect after a few empty reads.
+                if (
+                    self._capture is None
+                    or not self._capture.isOpened()
+                    or self._consecutive_empty_frames >= 3
+                ):
+                    if self._capture is not None:
+                        self._capture.release()
+                        self._capture = None
                     self._status = CameraStatus.RECONNECTING
                 return None
 
@@ -211,10 +226,14 @@ class RTSPCaptureService(FrameCaptureService):
                 )
                 return None
 
+            write_camera_preview = __import__(
+                "src.services.camera_preview", fromlist=["write_camera_preview"]
+            ).write_camera_preview
             write_camera_preview(self._settings, self._camera.id, frame)
 
             self._last_frame_at = datetime.now(timezone.utc)
             self._frames_captured += 1
+            self._consecutive_empty_frames = 0
             self._clear_error()
             logger.debug(
                 "frame captured",
