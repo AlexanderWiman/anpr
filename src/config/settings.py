@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     yolo_model_path: Path = Field(default=Path("./models/plate_yolov8.pt"), alias="YOLO_MODEL_PATH")
     yolo_confidence: float = Field(default=0.15, alias="YOLO_CONFIDENCE")
     yolo_max_image_width: int = Field(default=1280, alias="YOLO_MAX_IMAGE_WIDTH")
+    # Opt-in per site: run YOLO on the top portion of the frame (wide halls / distant plates).
+    detection_roi_enabled: bool = Field(default=False, alias="DETECTION_ROI_ENABLED")
+    detection_roi_top_fraction: float = Field(
+        default=0.35, alias="DETECTION_ROI_TOP_FRACTION"
+    )
 
     # Storage
     storage_dir: Path = Field(default=Path("./storage"), alias="STORAGE_DIR")

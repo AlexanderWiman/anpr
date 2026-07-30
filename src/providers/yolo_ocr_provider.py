@@ -125,10 +125,11 @@ class YoloOcrPlateProvider(PlateProvider):
             return []
 
         image = self._resize(image, max_width=self._settings.yolo_max_image_width)
+        detect_image, y_offset = self._apply_detection_roi(image)
         min_conf = min(self._settings.min_confidence, self._settings.ocr_min_confidence)
 
         results = self._detector.predict(
-            source=image,
+            source=detect_image,
             conf=self._settings.yolo_confidence,
             verbose=False,
         )
@@ -143,6 +144,8 @@ class YoloOcrPlateProvider(PlateProvider):
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 yolo_conf = float(box.conf[0])
+                y1 += y_offset
+                y2 += y_offset
 
                 crop, x1, y1, bw, bh = self._extract_crop(image, x1, y1, x2, y2)
                 if crop is None:
@@ -188,6 +191,7 @@ class YoloOcrPlateProvider(PlateProvider):
                         "ocr_confidence": ocr_conf,
                         "provider": self.name,
                         "image_path": image_path,
+                        "detection_roi": self._settings.detection_roi_enabled,
                     },
                 )
 
@@ -361,6 +365,24 @@ class YoloOcrPlateProvider(PlateProvider):
         if crop.size == 0:
             return None, x1, y1, 0, 0
         return crop, x1, y1, x2 - x1, y2 - y1
+
+    def _apply_detection_roi(self, image: np.ndarray) -> tuple[np.ndarray, int]:
+        """
+        Optionally crop to the top portion of the frame before YOLO.
+
+        Enabled only when DETECTION_ROI_ENABLED=true for this site.
+        Returns (image_for_yolo, y_offset) so boxes can be mapped back.
+        """
+        from src.utils.detection_roi import detection_roi_slice
+
+        y_start, y_end = detection_roi_slice(
+            image.shape[0],
+            enabled=self._settings.detection_roi_enabled,
+            top_fraction=self._settings.detection_roi_top_fraction,
+        )
+        if y_start == 0 and y_end == image.shape[0]:
+            return image, 0
+        return image[y_start:y_end, :], y_start
 
     @staticmethod
     def _resize(image: np.ndarray, max_width: int = 1280) -> np.ndarray:

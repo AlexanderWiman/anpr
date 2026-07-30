@@ -524,6 +524,7 @@
       <div class="status-row"><span class="status-label">OCR</span><span class="status-val ${anpr.ready ? "ok" : "warn"}">${anpr.ready ? "Redo" : "Fel"}</span></div>
       <div class="status-row"><span class="status-label">Bearbetar</span><span class="status-val">${anpr.ocrProcessing ? "Ja" : "Nej"}</span></div>
       <div class="status-row"><span class="status-label">Cooldown</span><span class="status-val">${anpr.cooldownSeconds ?? "—"}s</span></div>
+      <div class="status-row"><span class="status-label">Detektions-ROI</span><span class="status-val">${anpr.detectionRoiEnabled ? `På · övre ${Math.round((anpr.detectionRoiTopFraction || 0) * 100)}%` : "Av"}</span></div>
       <div class="status-row"><span class="status-label">Köade bilder</span><span class="status-val">${anpr.pendingFrames ?? 0}</span></div>
     `;
 

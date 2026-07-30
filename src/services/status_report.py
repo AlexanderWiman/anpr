@@ -125,6 +125,8 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             "provider": agent.provider_name,
             "minConfidence": settings.min_confidence,
             "cooldownSeconds": settings.plate_cooldown_seconds,
+            "detectionRoiEnabled": settings.detection_roi_enabled,
+            "detectionRoiTopFraction": settings.detection_roi_top_fraction,
             "ocrProcessing": agent._ocr_busy,
             "pendingFrames": len(agent._ocr_queue),
             "ready": agent._ocr_last_error is None,
