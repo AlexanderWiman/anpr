@@ -21,7 +21,8 @@ class CameraPipeline:
         self.capture: RTSPCaptureService = create_capture_service(settings, config)
         self.frames_dir = settings.frames_dir_for(config.id)
         self.frames_dir.mkdir(parents=True, exist_ok=True)
-        self.plate_confirmation = FramePlateBuffer(window_size=3, min_hits=2)
+        window = 5 if settings.detection_roi_enabled else 3
+        self.plate_confirmation = FramePlateBuffer(window_size=window, min_hits=2)
 
         motion_enabled = (
             config.motion_gate_enabled
@@ -37,6 +38,13 @@ class CameraPipeline:
             if motion_enabled
             else None
         )
+        self.capture.set_on_reconnected(self._on_capture_reconnected)
+
+    def _on_capture_reconnected(self) -> None:
+        """After RTSP refresh, keep OCR armed so a car mid-arrival is not missed."""
+        if self.motion_gate is not None:
+            self.motion_gate.reset()
+            self.motion_gate.activate()
 
     @property
     def camera_id(self) -> str:

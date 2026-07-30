@@ -35,8 +35,15 @@ class Settings(BaseSettings):
         alias="MOTION_PERIODIC_SCAN_SECONDS",
     )
     rtsp_connect_timeout_ms: int = Field(default=10000, alias="RTSP_CONNECT_TIMEOUT_MS")
-    rtsp_reconnect_delay_ms: int = Field(default=5000, alias="RTSP_RECONNECT_DELAY_MS")
+    rtsp_reconnect_delay_ms: int = Field(default=2000, alias="RTSP_RECONNECT_DELAY_MS")
     rtsp_transport: str = Field(default="tcp", alias="RTSP_TRANSPORT")
+    # Tapo/OpenCV streams often die after ~60s — refresh before that.
+    rtsp_max_session_seconds: float = Field(
+        default=40.0, alias="RTSP_MAX_SESSION_SECONDS"
+    )
+    rtsp_empty_frame_reconnect: int = Field(
+        default=1, alias="RTSP_EMPTY_FRAME_RECONNECT"
+    )
 
     # Backend
     backend_url: str = Field(alias="BACKEND_URL")

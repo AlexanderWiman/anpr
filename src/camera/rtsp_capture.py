@@ -1,7 +1,9 @@
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import time
 
 from src.camera.frame_io import frame_filename, save_frame
 
@@ -30,7 +32,13 @@ class RTSPCaptureService(FrameCaptureService):
         self._frames_captured = 0
         self._last_error_reason: str | None = None
         self._consecutive_empty_frames = 0
+        self._session_started_at: float | None = None
+        self._on_reconnected: Callable[[], None] | None = None
         self._lock = asyncio.Lock()
+
+    def set_on_reconnected(self, callback: Callable[[], None] | None) -> None:
+        """Optional hook (e.g. re-arm motion gate after RTSP refresh)."""
+        self._on_reconnected = callback
 
     @property
     def source_type(self) -> str:
@@ -77,7 +85,10 @@ class RTSPCaptureService(FrameCaptureService):
         url = self._camera.rtsp_url
         transport = (self._settings.rtsp_transport or "tcp").strip().lower()
         if transport in ("tcp", "udp"):
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = f"rtsp_transport;{transport}"
+            # Low-latency TCP options help flaky Tapo streams stay readable.
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+                f"rtsp_transport;{transport}|fflags;nobuffer|max_delay;500000"
+            )
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return cap
@@ -148,6 +159,7 @@ class RTSPCaptureService(FrameCaptureService):
             self._capture = cap
             self._status = CameraStatus.CONNECTED
             self._consecutive_empty_frames = 0
+            self._session_started_at = time.monotonic()
             self._clear_error()
             logger.info(
                 "camera connected",
@@ -157,6 +169,14 @@ class RTSPCaptureService(FrameCaptureService):
                     "rtsp_url": self._redact_url(),
                 },
             )
+            if self._on_reconnected is not None:
+                try:
+                    self._on_reconnected()
+                except Exception as exc:
+                    logger.warning(
+                        "on_reconnected callback failed",
+                        extra={"event": "camera_error", "reason": str(exc)},
+                    )
             return True
 
     async def disconnect(self) -> None:
@@ -200,11 +220,12 @@ class RTSPCaptureService(FrameCaptureService):
                     },
                 )
                 # OpenCV can keep isOpened() true on a dead Tapo stream after the
-                # first frame — force reconnect after a few empty reads.
+                # first frame — force reconnect after empty reads.
+                limit = max(1, self._settings.rtsp_empty_frame_reconnect)
                 if (
                     self._capture is None
                     or not self._capture.isOpened()
-                    or self._consecutive_empty_frames >= 3
+                    or self._consecutive_empty_frames >= limit
                 ):
                     if self._capture is not None:
                         self._capture.release()
@@ -247,6 +268,27 @@ class RTSPCaptureService(FrameCaptureService):
             return frame_path
 
     async def ensure_connected(self) -> bool:
+        max_session = self._settings.rtsp_max_session_seconds
+        if (
+            max_session > 0
+            and self._status == CameraStatus.CONNECTED
+            and self._capture is not None
+            and self._session_started_at is not None
+            and time.monotonic() - self._session_started_at >= max_session
+        ):
+            logger.info(
+                "refreshing RTSP session before stream dies",
+                extra={
+                    "event": "camera_session_refresh",
+                    "camera_id": self._camera.id,
+                    "max_session_seconds": max_session,
+                },
+            )
+            if self._capture is not None:
+                self._capture.release()
+                self._capture = None
+            self._status = CameraStatus.RECONNECTING
+
         if self._status == CameraStatus.CONNECTED and self._capture is not None:
             if self._capture.isOpened():
                 return True

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
+import time
 
 import uvicorn
 
@@ -91,6 +92,7 @@ class AnprAgent:
         self._ocr_worker_running = False
         self._ocr_last_error: str | None = None
         self._ocr_last_error_at: datetime | None = None
+        self._last_detection_empty_log_at: dict[str, float] = {}
         self._cleanup_task: asyncio.Task | None = None
         self._frame_captures_in_flight: set[str] = set()
         self._log_exports_in_flight: set[str] = set()
@@ -292,15 +294,30 @@ class AnprAgent:
         self._clear_ocr_error()
 
         min_conf = min(self.settings.min_confidence, self.settings.ocr_min_confidence)
+        if self.settings.detection_roi_enabled:
+            # Match ROI quality gate — distant plates often land just under 0.55.
+            min_conf = max(0.48, min_conf - 0.07)
 
         if not detections:
             pipeline.plate_confirmation.observe_empty()
+            now = time.monotonic()
+            last = self._last_detection_empty_log_at.get(camera_id, 0.0)
+            if now - last >= 15.0:
+                self._last_detection_empty_log_at[camera_id] = now
+                logger.info(
+                    "no plate in OCR frame",
+                    extra={
+                        "event": "detection_empty",
+                        "camera_id": camera_id,
+                        "detection_roi": self.settings.detection_roi_enabled,
+                    },
+                )
             return False
 
         delivered = False
         for detection in detections:
             if detection.confidence < min_conf:
-                logger.debug(
+                logger.info(
                     "detection below confidence threshold",
                     extra={
                         "event": "detection_filtered",
@@ -317,6 +334,15 @@ class AnprAgent:
                 normalized, detection.confidence
             )
             if confirmed is None:
+                logger.info(
+                    "plate candidate awaiting confirmation",
+                    extra={
+                        "event": "plate_candidate",
+                        "camera_id": camera_id,
+                        "plate": normalized,
+                        "confidence": detection.confidence,
+                    },
+                )
                 continue
 
             confirmed_plate, confirmed_conf = confirmed
