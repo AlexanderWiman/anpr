@@ -41,10 +41,15 @@ class CameraPipeline:
         self.capture.set_on_reconnected(self._on_capture_reconnected)
 
     def _on_capture_reconnected(self) -> None:
-        """After RTSP refresh, keep OCR armed so a car mid-arrival is not missed."""
+        """
+        After RTSP refresh, briefly re-arm OCR then rely on real motion / periodic scan.
+
+        A full active_seconds re-arm every ~40s session refresh left Falun OCR-running
+        24/7 (~40 frames/min) with empty halls — noisy logs and no spare capacity.
+        """
         if self.motion_gate is not None:
             self.motion_gate.reset()
-            self.motion_gate.activate()
+            self.motion_gate.activate(seconds=12.0, reason="rtsp_reconnect")
 
     @property
     def camera_id(self) -> str:

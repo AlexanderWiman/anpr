@@ -45,6 +45,7 @@ class YoloOcrPlateProvider(PlateProvider):
         self._ocr = None
         self.is_processing = False
         self.last_duration_ms: float | None = None
+        self._last_miss_diag_at = 0.0
 
     @property
     def name(self) -> str:
@@ -129,7 +130,7 @@ class YoloOcrPlateProvider(PlateProvider):
         min_conf = min(self._settings.min_confidence, self._settings.ocr_min_confidence)
         roi_enabled = self._settings.detection_roi_enabled
 
-        detections = self._detect_pass(
+        detections, roi_stats = self._detect_pass(
             image,
             image_path=image_path,
             use_roi=roi_enabled,
@@ -138,6 +139,7 @@ class YoloOcrPlateProvider(PlateProvider):
             pass_name="roi" if roi_enabled else "full",
             yolo_confidence=self._settings.yolo_confidence,
         )
+        pass_stats = [roi_stats]
 
         from src.utils.detection_roi import should_full_frame_fallback
 
@@ -150,7 +152,7 @@ class YoloOcrPlateProvider(PlateProvider):
             # Top ROI misses plates near the bottom (parked close to camera).
             # Use a strict quality gate here — the milder ROI gate + low YOLO
             # threshold produced a TWJ52P ghost on a different car (Falun 21:00).
-            logger.info(
+            logger.debug(
                 "ROI empty — full-frame fallback",
                 extra={
                     "event": "detection_roi_fallback",
@@ -158,7 +160,7 @@ class YoloOcrPlateProvider(PlateProvider):
                     "yolo_confidence": self._settings.yolo_confidence,
                 },
             )
-            detections = self._detect_pass(
+            detections, fallback_stats = self._detect_pass(
                 image,
                 image_path=image_path,
                 use_roi=False,
@@ -167,8 +169,10 @@ class YoloOcrPlateProvider(PlateProvider):
                 pass_name="full_fallback",
                 yolo_confidence=self._settings.yolo_confidence,
             )
+            pass_stats.append(fallback_stats)
 
         if not detections:
+            self._maybe_log_miss_diagnostics(image_path, pass_stats)
             logger.debug(
                 "no plate in frame",
                 extra={"event": "detection_empty", "path": image_path},
@@ -178,6 +182,31 @@ class YoloOcrPlateProvider(PlateProvider):
         # One best read per frame — avoids duplicate boxes creating noise.
         best = max(detections, key=lambda d: d.confidence)
         return [best]
+
+    def _maybe_log_miss_diagnostics(
+        self, image_path: str, pass_stats: list[dict]
+    ) -> None:
+        """Surface YOLO-without-plate misses at INFO (rate-limited) for Falun debugging."""
+        import time
+
+        boxes = sum(int(s.get("boxes", 0)) for s in pass_stats)
+        if boxes <= 0:
+            return
+        now = time.monotonic()
+        if now - self._last_miss_diag_at < 15.0:
+            return
+        self._last_miss_diag_at = now
+        logger.info(
+            "YOLO saw plate-like boxes but no accepted read",
+            extra={
+                "event": "detection_miss_diag",
+                "path": image_path,
+                "boxes": boxes,
+                "ocr_invalid": sum(int(s.get("ocr_invalid", 0)) for s in pass_stats),
+                "filtered": sum(int(s.get("filtered", 0)) for s in pass_stats),
+                "passes": pass_stats,
+            },
+        )
 
     def _detect_pass(
         self,
@@ -189,7 +218,7 @@ class YoloOcrPlateProvider(PlateProvider):
         roi_enabled: bool,
         pass_name: str,
         yolo_confidence: float,
-    ) -> list[PlateDetection]:
+    ) -> tuple[list[PlateDetection], dict]:
         detect_image, y_offset, scale = self._apply_detection_roi(
             image, force_full=not use_roi
         )
@@ -201,12 +230,16 @@ class YoloOcrPlateProvider(PlateProvider):
 
         detections: list[PlateDetection] = []
         seen: set[str] = set()
+        boxes = 0
+        ocr_invalid = 0
+        filtered = 0
 
         for result in results:
             if result.boxes is None:
                 continue
 
             for box in result.boxes:
+                boxes += 1
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 yolo_conf = float(box.conf[0])
                 x1, y1, x2, y2 = map_box_from_roi(
@@ -215,10 +248,12 @@ class YoloOcrPlateProvider(PlateProvider):
 
                 crop, x1, y1, bw, bh = self._extract_crop(image, x1, y1, x2, y2)
                 if crop is None:
+                    ocr_invalid += 1
                     continue
 
                 plate, ocr_conf, ocr_agreement = self._run_ocr(crop)
                 if not plate or not is_valid_swedish_plate(plate):
+                    ocr_invalid += 1
                     continue
                 if plate in seen:
                     continue
@@ -231,6 +266,7 @@ class YoloOcrPlateProvider(PlateProvider):
                     min_conf,
                     roi_enabled=roi_enabled,
                 ):
+                    filtered += 1
                     logger.debug(
                         "detection filtered by quality gate",
                         extra={
@@ -271,7 +307,13 @@ class YoloOcrPlateProvider(PlateProvider):
                     },
                 )
 
-        return detections
+        stats = {
+            "pass": pass_name,
+            "boxes": boxes,
+            "ocr_invalid": ocr_invalid,
+            "filtered": filtered,
+        }
+        return detections, stats
 
     def _run_ocr(self, crop: np.ndarray) -> tuple[str, float, int]:
         candidates: list[tuple[str, float]] = []

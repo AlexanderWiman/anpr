@@ -82,7 +82,9 @@ class MotionGate:
         )
         return True
 
-    def activate(self, seconds: float | None = None) -> None:
+    def activate(
+        self, seconds: float | None = None, *, reason: str = "agent_start"
+    ) -> None:
         """Force OCR for a period (e.g. after Start when a car is already in frame)."""
         duration = self._active_seconds if seconds is None else seconds
         self._active_until = time.monotonic() + duration
@@ -93,7 +95,7 @@ class MotionGate:
                 "event": "motion_active",
                 "score": None,
                 "active_seconds": duration,
-                "reason": "agent_start",
+                "reason": reason,
             },
         )
 
