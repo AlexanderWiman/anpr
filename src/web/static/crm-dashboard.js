@@ -328,8 +328,8 @@
             <div class="camera-meta camera-sync-hint" style="color:var(--amber);font-size:0.78rem" hidden></div>
             <div class="camera-meta">
               ID: <span class="mono">${escapeHtml(camera.id)}</span> · Riktning: ${escapeHtml(camera.direction || "—")}
+              · <span data-roi-for="${escapeHtml(camera.id)}">${escapeHtml(formatDetectionRoi(camera.detectionRoi))}</span>
             </div>
-            <div class="camera-meta" data-roi-for="${escapeHtml(camera.id)}">${escapeHtml(formatDetectionRoi(camera.detectionRoi))}</div>
             <div class="camera-preview" data-preview-for="${escapeHtml(camera.id)}">
               <img data-preview-img="${escapeHtml(camera.id)}" alt="Kamerabild ${escapeHtml(camera.label || camera.id)}" hidden>
               <div class="camera-preview-placeholder" data-preview-ph="${escapeHtml(camera.id)}">Väntar på bild…</div>

@@ -16,13 +16,16 @@ if TYPE_CHECKING:
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
+_NO_STORE = {"Cache-Control": "no-store, max-age=0"}
+
+
 def _crm_dashboard_html() -> HTMLResponse:
     path = STATIC_DIR / "crm-dashboard.html"
     if not path.is_file():
         return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
     html = path.read_text(encoding="utf-8")
     html = html.replace("__ANPR_VERSION__", __version__)
-    return HTMLResponse(html)
+    return HTMLResponse(html, headers=_NO_STORE)
 
 
 def _dashboard_html() -> HTMLResponse:
@@ -31,7 +34,7 @@ def _dashboard_html() -> HTMLResponse:
         return HTMLResponse("<h1>ANPR Edge Agent</h1><p>Dashboard missing.</p>")
     html = index.read_text(encoding="utf-8")
     html = html.replace('id="agent-version">v…</span>', f'id="agent-version">v{__version__}</span>')
-    return HTMLResponse(html)
+    return HTMLResponse(html, headers=_NO_STORE)
 
 
 def create_web_app(agent: "AnprAgent", process_started_at: datetime) -> FastAPI:
