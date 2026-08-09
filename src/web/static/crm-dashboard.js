@@ -140,6 +140,25 @@
     });
   }
 
+  function applyRoiOverlay(card, roi) {
+    const box = card?.querySelector("[data-roi-box]");
+    if (!box) return;
+    const fraction = Number(roi?.fraction);
+    if (!roi?.enabled || !(fraction > 0 && fraction < 1)) {
+      box.hidden = true;
+      return;
+    }
+    const pct = Math.round(fraction * 100);
+    const band = roi.band === "bottom" ? "bottom" : "top";
+    box.hidden = false;
+    box.dataset.band = band;
+    box.style.height = `${pct}%`;
+    box.style.top = band === "bottom" ? "auto" : "0";
+    box.style.bottom = band === "bottom" ? "0" : "auto";
+    const label = box.querySelector(".camera-roi-label");
+    if (label) label.textContent = `ROI ${pct}%`;
+  }
+
   function cameraLabel(cameraId) {
     const camera = (statusData?.cameras || []).find((item) => item.id === cameraId);
     return camera?.label || cameraId || "—";
@@ -298,6 +317,7 @@
       }
       const roiEl = card.querySelector(`[data-roi-for="${camera.id}"]`);
       if (roiEl) roiEl.textContent = formatDetectionRoi(camera.detectionRoi);
+      applyRoiOverlay(card, camera.detectionRoi);
     });
   }
 
@@ -334,6 +354,9 @@
               <img data-preview-img="${escapeHtml(camera.id)}" alt="Kamerabild ${escapeHtml(camera.label || camera.id)}" hidden>
               <div class="camera-preview-placeholder" data-preview-ph="${escapeHtml(camera.id)}">Väntar på bild…</div>
               <div class="camera-preview-overlay"></div>
+              <div class="camera-roi-box" data-roi-box="${escapeHtml(camera.id)}" hidden>
+                <span class="camera-roi-label">ROI</span>
+              </div>
               <div class="camera-live"><span class="dot"></span>Live</div>
               <div class="camera-preview-time">${escapeHtml(fmtTime(camera.lastFrameAt))}</div>
             </div>
