@@ -1203,6 +1203,10 @@
             : camera.lastFrameAt
               ? `Senast ${fmtTime(camera.lastFrameAt)}`
               : 'Ingen bild ännu';
+        const roi = camera.detectionRoi || {};
+        const roiText = !roi.enabled
+          ? 'ROI: av'
+          : `ROI: ${roi.band === 'bottom' ? 'nedre' : 'övre'} ${Math.round((Number(roi.fraction) || 0) * 100)}%`;
 
         return `
           <div class="camera-tile ${status}">
@@ -1211,6 +1215,7 @@
               <div class="camera-tile-name">${camera.label || camera.id}</div>
               <div class="camera-tile-state">${stateText}</div>
               <div class="camera-tile-time">${timeText}</div>
+              <div class="camera-tile-time">${roiText}</div>
             </div>
           </div>`;
       }).join('');
@@ -1359,12 +1364,19 @@
             remoteBody.innerHTML =
               `<div class="empty">${remoteCfg.lastError || 'Väntar på kameror från backend…'}</div>`;
           } else {
-            remoteBody.innerHTML = remoteCameras.map((camera) =>
-              `<div class="stream-row">
+            remoteBody.innerHTML = remoteCameras.map((camera) => {
+              let roiText = 'ROI: ej satt i CRM';
+              if (camera.detectionRoiEnabled != null) {
+                roiText = !camera.detectionRoiEnabled
+                  ? 'ROI: av'
+                  : `ROI: ${camera.detectionRoiBand === 'bottom' ? 'nedre' : 'övre'} ${Math.round((Number(camera.detectionRoiFraction) || 0) * 100)}%`;
+              }
+              return `<div class="stream-row">
                 <div class="stream-label">${camera.label || camera.id}${camera.direction ? ` · ${camera.direction}` : ''}</div>
                 <div class="stream-url">${camera.streamUrl || '—'}</div>
-              </div>`
-            ).join('') +
+                <div class="stream-meta">${roiText}</div>
+              </div>`;
+            }).join('') +
             `<div class="stream-meta">Uppdaterad ${fmtTime(remoteCfg.lastUpdatedAt)} · var ${remoteCfg.refreshSeconds || 60}:e sekund</div>`;
           }
         } else {

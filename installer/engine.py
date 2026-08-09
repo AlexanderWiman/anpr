@@ -717,11 +717,19 @@ def _install_mac_launchagent(app_dir: Path, log: Callable[[str], None]) -> None:
 
 
 def windows_autostart_task_script(app_dir: Path, *, task_name: str = "ANPREdgeAgent") -> str:
-    """Return PowerShell that registers the ANPR agent scheduled task on Windows."""
+    """
+    Return PowerShell that registers the ANPR agent scheduled task on Windows.
+
+    Prefers SYSTEM + AtStartup so workshop PCs start the agent after reboot
+    even when nobody logs in (Stockholm-style always-on machines). Falls back
+    to the installing user (logon + startup) when elevation is unavailable.
+    Never tears down an existing SYSTEM task from a non-admin update.
+    """
     ps_dir = str(app_dir).replace("'", "''")
     ps_ps1 = str(app_dir / "scripts" / "run-agent.ps1").replace("'", "''")
     return f"""
-Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue
+$ErrorActionPreference = 'Stop'
+$taskName = '{task_name}'
 $action = New-ScheduledTaskAction `
   -Execute 'cmd.exe' `
   -Argument '/c set "ANPR_INSTALL_DIR={ps_dir}"&& powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ''{ps_ps1}''' `
@@ -735,9 +743,31 @@ $settings = New-ScheduledTaskSettingsSet `
   -RestartCount 10 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit (New-TimeSpan -Days 3650) `
-  -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger @($triggerLogon, $triggerBoot) -Settings $settings `
-  -Description 'ANPR Edge Agent' | Out-Null
+  -MultipleInstances IgnoreNew `
+  -StartWhenAvailable
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+$existingUser = $null
+if ($existing) {{ $existingUser = [string]$existing.Principal.UserId }}
+
+if (-not $isAdmin -and $existingUser -and ($existingUser -eq 'SYSTEM' -or $existingUser -like '*\\SYSTEM')) {{
+  Write-Output 'KEPT_SYSTEM'
+  exit 0
+}}
+
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+
+if ($isAdmin) {{
+  $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggerBoot -Settings $settings `
+    -Principal $principal -Description 'ANPR Edge Agent (starts at boot as SYSTEM)' | Out-Null
+  Write-Output 'SYSTEM'
+  exit 0
+}}
+
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerLogon, $triggerBoot) -Settings $settings `
+  -Description 'ANPR Edge Agent (starts at user logon)' | Out-Null
+Write-Output 'USER'
 """
 
 
@@ -766,6 +796,9 @@ def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
         creationflags=flags,
         **subprocess_text_kwargs(),
     )
+    mode = (result.stdout or "").strip().splitlines()
+    mode_token = mode[-1].strip() if mode else ""
+
     if result.returncode != 0:
         startup.mkdir(parents=True, exist_ok=True)
         bat = startup / "ANPR Edge Agent.bat"
@@ -774,9 +807,21 @@ def _install_windows_startup(app_dir: Path, log: Callable[[str], None]) -> None:
             encoding="utf-8",
         )
         log(f"Autostart via Startup-mappen: {bat}")
+        if result.stderr:
+            log(f"Schemalagd uppgift misslyckades: {result.stderr.strip()[:300]}")
         return
 
-    log("Autostart aktiverad (schemalagd uppgift vid inloggning och uppstart)")
+    if mode_token == "SYSTEM":
+        log("Autostart aktiverad (SYSTEM — startar vid omstart utan inloggning)")
+    elif mode_token == "KEPT_SYSTEM":
+        log("Autostart oförändrad (befintlig SYSTEM-uppgift behålls)")
+    elif mode_token == "USER":
+        log(
+            "Autostart aktiverad (användare — kräver inloggning efter omstart). "
+            "Kör installern som administratör för start utan inloggning."
+        )
+    else:
+        log("Autostart aktiverad (schemalagd uppgift)")
 
 
 def agent_is_running(port: int = 8080) -> bool:

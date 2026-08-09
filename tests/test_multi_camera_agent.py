@@ -93,6 +93,7 @@ def test_status_report_includes_camera_list(tmp_path: Path):
 
     assert report["site"]["cameraCount"] == 2
     assert [camera["id"] for camera in report["cameras"]] == ["hall-1", "hall-2"]
+    assert all("detectionRoi" in camera for camera in report["cameras"])
     assert isinstance(report["host"]["hostname"], str)
     assert report["host"]["hostname"]
 

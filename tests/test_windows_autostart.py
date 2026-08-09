@@ -16,3 +16,14 @@ def test_windows_autostart_task_script_pins_install_dir_and_bypasses_execution_p
     assert 'set "ANPR_INSTALL_DIR=C:\\ProgramData\\anpr-edge-agent"' in script
     assert "-ExecutionPolicy Bypass" in script
     assert "run-agent.ps1" in script
+
+
+def test_windows_autostart_prefers_system_principal_at_boot():
+    script = windows_autostart_task_script(Path(r"C:\ProgramData\anpr-edge-agent"))
+    assert "New-ScheduledTaskPrincipal -UserId 'SYSTEM'" in script
+    assert "LogonType ServiceAccount" in script
+    assert "RunLevel Highest" in script
+    assert "Write-Output 'SYSTEM'" in script
+    assert "Write-Output 'USER'" in script
+    assert "KEPT_SYSTEM" in script
+    assert "StartWhenAvailable" in script

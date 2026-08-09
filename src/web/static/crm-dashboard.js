@@ -111,7 +111,33 @@
   }
 
   function cameraIds(cameras) {
-    return (cameras || []).map((camera) => camera.id).join("|");
+    return (cameras || [])
+      .map((camera) => {
+        const roi = camera.detectionRoi || {};
+        return [
+          camera.id,
+          roi.enabled ? "1" : "0",
+          roi.band || "",
+          roi.fraction ?? "",
+        ].join(":");
+      })
+      .join("|");
+  }
+
+  function formatDetectionRoi(roi) {
+    if (!roi || !roi.enabled) return "ROI: av";
+    const band = roi.band === "bottom" ? "nedre" : "övre";
+    const pct = Math.round((Number(roi.fraction) || 0) * 100);
+    return `ROI: ${band} ${pct}%`;
+  }
+
+  function formatConfiguredDetectionRoi(camera) {
+    if (camera.detectionRoiEnabled == null) return "ROI: ej satt i CRM";
+    return formatDetectionRoi({
+      enabled: Boolean(camera.detectionRoiEnabled),
+      band: camera.detectionRoiBand,
+      fraction: camera.detectionRoiFraction,
+    });
   }
 
   function cameraLabel(cameraId) {
@@ -270,6 +296,8 @@
         hintEl.textContent = syncing ? camera.statusMessage : "";
         hintEl.hidden = !syncing;
       }
+      const roiEl = card.querySelector(`[data-roi-for="${camera.id}"]`);
+      if (roiEl) roiEl.textContent = formatDetectionRoi(camera.detectionRoi);
     });
   }
 
@@ -301,6 +329,7 @@
             <div class="camera-meta">
               ID: <span class="mono">${escapeHtml(camera.id)}</span> · Riktning: ${escapeHtml(camera.direction || "—")}
             </div>
+            <div class="camera-meta" data-roi-for="${escapeHtml(camera.id)}">${escapeHtml(formatDetectionRoi(camera.detectionRoi))}</div>
             <div class="camera-preview" data-preview-for="${escapeHtml(camera.id)}">
               <img data-preview-img="${escapeHtml(camera.id)}" alt="Kamerabild ${escapeHtml(camera.label || camera.id)}" hidden>
               <div class="camera-preview-placeholder" data-preview-ph="${escapeHtml(camera.id)}">Väntar på bild…</div>
@@ -524,7 +553,7 @@
       <div class="status-row"><span class="status-label">OCR</span><span class="status-val ${anpr.ready ? "ok" : "warn"}">${anpr.ready ? "Redo" : "Fel"}</span></div>
       <div class="status-row"><span class="status-label">Bearbetar</span><span class="status-val">${anpr.ocrProcessing ? "Ja" : "Nej"}</span></div>
       <div class="status-row"><span class="status-label">Cooldown</span><span class="status-val">${anpr.cooldownSeconds ?? "—"}s</span></div>
-      <div class="status-row"><span class="status-label">Detektions-ROI</span><span class="status-val">${anpr.detectionRoiEnabled ? `På · övre ${Math.round((anpr.detectionRoiTopFraction || 0) * 100)}%` : "Av"}</span></div>
+      <div class="status-row"><span class="status-label">Detektions-ROI (site)</span><span class="status-val">${anpr.detectionRoiEnabled ? `På · övre ${Math.round((anpr.detectionRoiTopFraction || 0) * 100)}%` : "Av (per kamera under Kameror)"}</span></div>
       <div class="status-row"><span class="status-label">Köade bilder</span><span class="status-val">${anpr.pendingFrames ?? 0}</span></div>
     `;
 
@@ -541,6 +570,7 @@
           <div style="margin-bottom:12px;font-size:0.85rem">
             <strong>${escapeHtml(camera.label || camera.id)}${camera.direction ? ` · ${escapeHtml(camera.direction)}` : ""}</strong><br>
             <span class="mono" style="color:var(--text-secondary)">${escapeHtml(camera.streamUrl || "—")}</span><br>
+            <span style="color:var(--text-secondary);font-size:0.78rem">${escapeHtml(formatConfiguredDetectionRoi(camera))}</span><br>
             <span style="color:var(--text-tertiary);font-size:0.78rem">Uppdaterad ${escapeHtml(fmtTime(remote.lastUpdatedAt))} · var ${remote.refreshSeconds || 60}:e sekund</span>
           </div>
         `).join("")

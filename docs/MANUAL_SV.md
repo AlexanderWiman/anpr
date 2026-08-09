@@ -39,7 +39,7 @@ Klicka **Installera**. Första gången tar **10–15 minuter** (laddar ner AI-ko
 
 - Webbläsaren öppnas automatiskt
 - ANPR läser skyltar från kameran
-- Vid omstart av datorn startar systemet själv
+- Vid omstart av datorn startar systemet själv (kräver att installern körts som administratör — annars först efter inloggning)
 - Genvägen **ANPR** på skrivbordet öppnar dashboarden
 
 ---

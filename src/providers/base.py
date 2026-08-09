@@ -12,12 +12,15 @@ class PlateProvider(ABC):
         """Provider identifier sent with events."""
 
     @abstractmethod
-    async def detect_plate(self, image_path: str) -> list[PlateDetection]:
+    async def detect_plate(
+        self, image_path: str, *, camera_id: str | None = None
+    ) -> list[PlateDetection]:
         """
         Detect license plates in an image.
 
         Args:
             image_path: Path to a captured frame on disk.
+            camera_id: Optional camera id for per-camera ROI settings.
 
         Returns:
             List of detected plates (may be empty).

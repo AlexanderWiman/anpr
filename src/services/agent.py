@@ -290,11 +290,29 @@ class AnprAgent:
     async def process_frame(self, frame_path: Path, camera_id: str) -> bool:
         """Run plate detection on a captured frame and deliver events."""
         pipeline = self.pipeline_for(camera_id)
-        detections = await self._provider.detect_plate(str(frame_path))
+        detections = await self._provider.detect_plate(
+            str(frame_path), camera_id=camera_id
+        )
         self._clear_ocr_error()
 
         min_conf = min(self.settings.min_confidence, self.settings.ocr_min_confidence)
-        if self.settings.detection_roi_enabled:
+        from src.utils.detection_roi import (
+            merge_camera_config_roi_overrides,
+            parse_detection_roi_by_camera,
+            resolve_camera_roi,
+        )
+
+        by_camera = merge_camera_config_roi_overrides(
+            parse_detection_roi_by_camera(self.settings.detection_roi_by_camera),
+            self.settings.cameras,
+        )
+        roi_enabled, _roi_band, _roi_fraction = resolve_camera_roi(
+            camera_id,
+            site_enabled=self.settings.detection_roi_enabled,
+            site_top_fraction=self.settings.detection_roi_top_fraction,
+            by_camera=by_camera,
+        )
+        if roi_enabled:
             # Match ROI quality gate — distant plates often land just under 0.55.
             min_conf = max(0.48, min_conf - 0.07)
 
@@ -309,7 +327,7 @@ class AnprAgent:
                     extra={
                         "event": "detection_empty",
                         "camera_id": camera_id,
-                        "detection_roi": self.settings.detection_roi_enabled,
+                        "detection_roi": roi_enabled,
                     },
                 )
             return False

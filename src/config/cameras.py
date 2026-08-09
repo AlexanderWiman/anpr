@@ -18,6 +18,9 @@ class CameraConfig(BaseModel):
     rtsp_url: str
     frame_interval_ms: int | None = None
     motion_gate_enabled: bool | None = None
+    detection_roi_enabled: bool | None = None
+    detection_roi_band: str | None = None
+    detection_roi_fraction: float | None = None
 
     @field_validator("id")
     @classmethod

@@ -51,14 +51,18 @@ class YoloOcrPlateProvider(PlateProvider):
     def name(self) -> str:
         return "yolo_ocr"
 
-    async def detect_plate(self, image_path: str) -> list[PlateDetection]:
+    async def detect_plate(
+        self, image_path: str, *, camera_id: str | None = None
+    ) -> list[PlateDetection]:
         loop = asyncio.get_event_loop()
         self.is_processing = True
         try:
             import time
 
             start = time.perf_counter()
-            result = await loop.run_in_executor(None, self._detect_sync, image_path)
+            result = await loop.run_in_executor(
+                None, lambda: self._detect_sync(image_path, camera_id=camera_id)
+            )
             self.last_duration_ms = (time.perf_counter() - start) * 1000
             return result
         finally:
@@ -113,8 +117,17 @@ class YoloOcrPlateProvider(PlateProvider):
     def check_models_loadable(self) -> None:
         self._ensure_models()
 
-    def _detect_sync(self, image_path: str) -> list[PlateDetection]:
+    def _detect_sync(
+        self, image_path: str, *, camera_id: str | None = None
+    ) -> list[PlateDetection]:
         import cv2
+
+        from src.utils.detection_roi import (
+            merge_camera_config_roi_overrides,
+            parse_detection_roi_by_camera,
+            resolve_camera_roi,
+            should_full_frame_fallback,
+        )
 
         self._ensure_models()
 
@@ -128,7 +141,16 @@ class YoloOcrPlateProvider(PlateProvider):
 
         image = self._resize(image, max_width=self._settings.yolo_max_image_width)
         min_conf = min(self._settings.min_confidence, self._settings.ocr_min_confidence)
-        roi_enabled = self._settings.detection_roi_enabled
+        by_camera = merge_camera_config_roi_overrides(
+            parse_detection_roi_by_camera(self._settings.detection_roi_by_camera),
+            self._settings.cameras,
+        )
+        roi_enabled, roi_band, roi_fraction = resolve_camera_roi(
+            camera_id,
+            site_enabled=self._settings.detection_roi_enabled,
+            site_top_fraction=self._settings.detection_roi_top_fraction,
+            by_camera=by_camera,
+        )
 
         detections, roi_stats = self._detect_pass(
             image,
@@ -138,25 +160,27 @@ class YoloOcrPlateProvider(PlateProvider):
             roi_enabled=roi_enabled,
             pass_name="roi" if roi_enabled else "full",
             yolo_confidence=self._settings.yolo_confidence,
+            roi_band=roi_band,
+            roi_fraction=roi_fraction,
         )
         pass_stats = [roi_stats]
-
-        from src.utils.detection_roi import should_full_frame_fallback
 
         if should_full_frame_fallback(
             roi_enabled=roi_enabled,
             frame_height=image.shape[0],
-            top_fraction=self._settings.detection_roi_top_fraction,
+            fraction=roi_fraction,
+            band=roi_band,
             had_detections=bool(detections),
         ):
-            # Top ROI misses plates near the bottom (parked close to camera).
-            # Use a strict quality gate here — the milder ROI gate + low YOLO
-            # threshold produced a TWJ52P ghost on a different car (Falun 21:00).
+            # Configured band missed the plate — retry full frame with strict gate.
             logger.debug(
                 "ROI empty — full-frame fallback",
                 extra={
                     "event": "detection_roi_fallback",
                     "path": image_path,
+                    "camera_id": camera_id,
+                    "roi_band": roi_band,
+                    "roi_fraction": roi_fraction,
                     "yolo_confidence": self._settings.yolo_confidence,
                 },
             )
@@ -165,9 +189,11 @@ class YoloOcrPlateProvider(PlateProvider):
                 image_path=image_path,
                 use_roi=False,
                 min_conf=min_conf,
-                roi_enabled=False,  # strict gate for close-up / bottom-edge reads
+                roi_enabled=False,  # strict gate for close-up / off-band reads
                 pass_name="full_fallback",
                 yolo_confidence=self._settings.yolo_confidence,
+                roi_band=roi_band,
+                roi_fraction=roi_fraction,
             )
             pass_stats.append(fallback_stats)
 
@@ -218,9 +244,14 @@ class YoloOcrPlateProvider(PlateProvider):
         roi_enabled: bool,
         pass_name: str,
         yolo_confidence: float,
+        roi_band: str = "top",
+        roi_fraction: float = 0.35,
     ) -> tuple[list[PlateDetection], dict]:
         detect_image, y_offset, scale = self._apply_detection_roi(
-            image, force_full=not use_roi
+            image,
+            force_full=not use_roi,
+            band=roi_band,  # type: ignore[arg-type]
+            fraction=roi_fraction,
         )
         results = self._detector.predict(
             source=detect_image,
@@ -489,12 +520,16 @@ class YoloOcrPlateProvider(PlateProvider):
         return crop, x1, y1, x2 - x1, y2 - y1
 
     def _apply_detection_roi(
-        self, image: np.ndarray, *, force_full: bool = False
+        self,
+        image: np.ndarray,
+        *,
+        force_full: bool = False,
+        band: str = "top",
+        fraction: float = 0.35,
     ) -> tuple[np.ndarray, int, float]:
         """
-        Optionally crop + upscale the top portion of the frame before YOLO.
+        Optionally crop + upscale a band of the frame before YOLO.
 
-        Enabled only when DETECTION_ROI_ENABLED=true for this site.
         force_full=True skips cropping (used by full-frame fallback).
         Returns (image_for_yolo, y_offset, scale).
         """
@@ -504,8 +539,9 @@ class YoloOcrPlateProvider(PlateProvider):
 
         y_start, y_end = detection_roi_slice(
             image.shape[0],
-            enabled=self._settings.detection_roi_enabled and not force_full,
-            top_fraction=self._settings.detection_roi_top_fraction,
+            enabled=not force_full,
+            fraction=fraction,
+            band=band,  # type: ignore[arg-type]
         )
         if y_start == 0 and y_end == image.shape[0]:
             return image, 0, 1.0

@@ -48,6 +48,9 @@ def camera_configs_from_remote_payload(payload: dict) -> list[CameraConfig]:
 
         frame_interval_ms = item.get("frameIntervalMs")
         motion_gate_enabled = item.get("motionGateEnabled")
+        detection_roi_enabled = item.get("detectionRoiEnabled")
+        detection_roi_band = item.get("detectionRoiBand")
+        detection_roi_fraction = item.get("detectionRoiFraction")
         cameras.append(
             CameraConfig(
                 id=camera_id,
@@ -58,6 +61,21 @@ def camera_configs_from_remote_payload(payload: dict) -> list[CameraConfig]:
                 frame_interval_ms=int(frame_interval_ms) if frame_interval_ms else None,
                 motion_gate_enabled=(
                     bool(motion_gate_enabled) if motion_gate_enabled is not None else None
+                ),
+                detection_roi_enabled=(
+                    bool(detection_roi_enabled)
+                    if detection_roi_enabled is not None
+                    else None
+                ),
+                detection_roi_band=(
+                    str(detection_roi_band).strip().lower()
+                    if detection_roi_band
+                    else None
+                ),
+                detection_roi_fraction=(
+                    float(detection_roi_fraction)
+                    if detection_roi_fraction is not None
+                    else None
                 ),
             )
         )
@@ -72,6 +90,9 @@ def camera_config_fingerprint(cameras: list[CameraConfig]) -> tuple:
             camera.rtsp_url,
             camera.frame_interval_ms,
             camera.motion_gate_enabled,
+            camera.detection_roi_enabled,
+            camera.detection_roi_band,
+            camera.detection_roi_fraction,
         )
         for camera in cameras
     )
@@ -95,6 +116,9 @@ class RemoteCameraConfigService:
                 "label": camera.label or camera.id,
                 "direction": camera.direction,
                 "streamUrl": mask_stream_url(camera.rtsp_url),
+                "detectionRoiEnabled": camera.detection_roi_enabled,
+                "detectionRoiBand": camera.detection_roi_band,
+                "detectionRoiFraction": camera.detection_roi_fraction,
             }
             for camera in settings.cameras
         ]

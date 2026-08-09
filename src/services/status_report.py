@@ -47,7 +47,34 @@ def effective_camera_status(
     return raw_status
 
 
-def _camera_status(pipeline, *, agent_running: bool, now: datetime) -> dict:
+def _resolved_detection_roi(agent: "AnprAgent", camera_id: str) -> dict:
+    from src.utils.detection_roi import (
+        merge_camera_config_roi_overrides,
+        parse_detection_roi_by_camera,
+        resolve_camera_roi,
+    )
+
+    settings = agent.settings
+    by_camera = merge_camera_config_roi_overrides(
+        parse_detection_roi_by_camera(settings.detection_roi_by_camera),
+        settings.cameras,
+    )
+    enabled, band, fraction = resolve_camera_roi(
+        camera_id,
+        site_enabled=settings.detection_roi_enabled,
+        site_top_fraction=settings.detection_roi_top_fraction,
+        by_camera=by_camera,
+    )
+    return {
+        "enabled": enabled,
+        "band": band,
+        "fraction": fraction,
+    }
+
+
+def _camera_status(
+    pipeline, *, agent: "AnprAgent", agent_running: bool, now: datetime
+) -> dict:
     camera = pipeline.capture
     status_message = getattr(camera, "status_message", None)
     last_frame_at = camera.last_frame_at
@@ -73,6 +100,7 @@ def _camera_status(pipeline, *, agent_running: bool, now: datetime) -> dict:
         "lastFrameAt": last_frame_at.isoformat() if last_frame_at else None,
         "lastFrameAgeSeconds": last_frame_age,
         "framesCaptured": camera.frames_captured,
+        "detectionRoi": _resolved_detection_roi(agent, pipeline.camera_id),
     }
 
 
@@ -86,7 +114,9 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
     agent_running = agent_status.get("state") == "running"
     delivery = agent.delivery
     cameras = [
-        _camera_status(pipeline, agent_running=agent_running, now=now)
+        _camera_status(
+            pipeline, agent=agent, agent_running=agent_running, now=now
+        )
         for pipeline in agent.pipelines.values()
     ]
     primary = agent.primary_pipeline
@@ -127,6 +157,7 @@ def build_status_report(agent: "AnprAgent", process_started_at: datetime) -> dic
             "cooldownSeconds": settings.plate_cooldown_seconds,
             "detectionRoiEnabled": settings.detection_roi_enabled,
             "detectionRoiTopFraction": settings.detection_roi_top_fraction,
+            "detectionRoiByCamera": settings.detection_roi_by_camera or "",
             "ocrProcessing": agent._ocr_busy,
             "pendingFrames": len(agent._ocr_queue),
             "ready": agent._ocr_last_error is None,
