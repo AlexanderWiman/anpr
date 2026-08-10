@@ -262,6 +262,7 @@ class YoloOcrPlateProvider(PlateProvider):
         results = self._detector.predict(
             source=detect_image,
             conf=yolo_confidence,
+            imgsz=max(640, int(self._settings.yolo_imgsz)),
             verbose=False,
         )
 
