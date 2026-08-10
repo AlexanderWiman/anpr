@@ -111,3 +111,61 @@ def test_controller_starts_capture_loop_per_camera(mock_create_task, tmp_path: P
         assert "capture-loop-hall-2" in names
 
     asyncio.run(run())
+
+
+def test_capture_loop_callbacks_keep_distinct_camera_ids(tmp_path: Path):
+    """Regression: nested loop closures must not tag every frame as the last camera."""
+    agent = AnprAgent(_settings(tmp_path))
+    seen: list[str] = []
+
+    async def fake_process(frame_path, camera_id: str) -> None:
+        seen.append(camera_id)
+
+    agent.process_frame_background = fake_process  # type: ignore[method-assign]
+
+    async def run():
+        # Build both callbacks the same way start()/reconcile do after the fix.
+        cb1_holder = {}
+        cb2_holder = {}
+
+        async def capture1():
+            async def frame_callback(frame_path):
+                await agent.process_frame_background(frame_path, "hall-1")
+
+            cb1_holder["cb"] = frame_callback
+
+        async def capture2():
+            async def frame_callback(frame_path):
+                await agent.process_frame_background(frame_path, "hall-2")
+
+            cb2_holder["cb"] = frame_callback
+
+        await capture1()
+        await capture2()
+        await cb1_holder["cb"](tmp_path / "a.jpg")
+        await cb2_holder["cb"](tmp_path / "b.jpg")
+
+    asyncio.run(run())
+    assert seen == ["hall-1", "hall-2"]
+
+    # Also exercise the real helper used by AgentController.
+    seen.clear()
+
+    async def run_helper():
+        loop1 = agent.controller._run_capture_loop(agent.pipelines["hall-1"])
+        loop2 = agent.controller._run_capture_loop(agent.pipelines["hall-2"])
+        # Pull the nested callbacks by patching run_capture_loop.
+        callbacks = []
+
+        async def fake_run(callback, interval_ms=None):
+            callbacks.append(callback)
+
+        agent.pipelines["hall-1"].capture.run_capture_loop = fake_run  # type: ignore[method-assign]
+        agent.pipelines["hall-2"].capture.run_capture_loop = fake_run  # type: ignore[method-assign]
+        await loop1
+        await loop2
+        await callbacks[0](tmp_path / "c.jpg")
+        await callbacks[1](tmp_path / "d.jpg")
+
+    asyncio.run(run_helper())
+    assert seen == ["hall-1", "hall-2"]

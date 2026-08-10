@@ -79,27 +79,10 @@ class AgentController:
                         )
 
                 for pipeline in self._agent.pipelines.values():
-                    camera_id = pipeline.camera_id
-
-                    async def frame_callback(
-                        frame_path,
-                        bound_camera_id=camera_id,
-                    ) -> None:
-                        await self._agent.process_frame_background(
-                            frame_path,
-                            bound_camera_id,
-                        )
-
-                    async def run_loop(bound_pipeline=pipeline) -> None:
-                        await bound_pipeline.capture.run_capture_loop(
-                            frame_callback,
-                            interval_ms=bound_pipeline.get_capture_interval_ms,
-                        )
-
                     self._tasks.append(
                         asyncio.create_task(
-                            run_loop(),
-                            name=f"capture-loop-{camera_id}",
+                            self._run_capture_loop(pipeline),
+                            name=f"capture-loop-{pipeline.camera_id}",
                         )
                     )
 
@@ -125,6 +108,18 @@ class AgentController:
                 logger.exception("agent start failed", extra={"event": "agent_error"})
                 return {"ok": False, "message": f"Start misslyckades: {exc}", **self.status()}
 
+    async def _run_capture_loop(self, pipeline) -> None:
+        """Run one camera capture loop with a stably bound camera id."""
+        camera_id = pipeline.camera_id
+
+        async def frame_callback(frame_path) -> None:
+            await self._agent.process_frame_background(frame_path, camera_id)
+
+        await pipeline.capture.run_capture_loop(
+            frame_callback,
+            interval_ms=pipeline.get_capture_interval_ms,
+        )
+
     async def reconcile_capture_loops(self) -> None:
         """Restart capture tasks after remote camera config changes."""
         if self._state != AgentState.RUNNING:
@@ -144,25 +139,9 @@ class AgentController:
 
         for pipeline in self._agent.pipelines.values():
             pipeline.reset_runtime_state()
-
-            async def frame_callback(
-                frame_path,
-                bound_camera_id=pipeline.camera_id,
-            ) -> None:
-                await self._agent.process_frame_background(
-                    frame_path,
-                    bound_camera_id,
-                )
-
-            async def run_loop(bound_pipeline=pipeline) -> None:
-                await bound_pipeline.capture.run_capture_loop(
-                    frame_callback,
-                    interval_ms=bound_pipeline.get_capture_interval_ms,
-                )
-
             self._tasks.append(
                 asyncio.create_task(
-                    run_loop(),
+                    self._run_capture_loop(pipeline),
                     name=f"capture-loop-{pipeline.camera_id}",
                 )
             )
