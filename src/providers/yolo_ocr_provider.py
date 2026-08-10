@@ -165,26 +165,31 @@ class YoloOcrPlateProvider(PlateProvider):
         )
         pass_stats = [roi_stats]
 
+        # Weak ROI hits (glare / partial crop) must not block full-frame retry.
+        roi_confident = any(d.confidence >= 0.60 for d in detections)
         if should_full_frame_fallback(
             roi_enabled=roi_enabled,
             frame_height=image.shape[0],
             fraction=roi_fraction,
             band=roi_band,
-            had_detections=bool(detections),
+            had_detections=roi_confident,
         ):
-            # Configured band missed the plate — retry full frame with strict gate.
+            # Configured band missed or only got a weak read — retry full frame.
             logger.debug(
-                "ROI empty — full-frame fallback",
+                "ROI empty/weak — full-frame fallback",
                 extra={
                     "event": "detection_roi_fallback",
                     "path": image_path,
                     "camera_id": camera_id,
                     "roi_band": roi_band,
                     "roi_fraction": roi_fraction,
+                    "roi_best_confidence": max(
+                        (d.confidence for d in detections), default=0.0
+                    ),
                     "yolo_confidence": self._settings.yolo_confidence,
                 },
             )
-            detections, fallback_stats = self._detect_pass(
+            fallback_dets, fallback_stats = self._detect_pass(
                 image,
                 image_path=image_path,
                 use_roi=False,
@@ -196,6 +201,7 @@ class YoloOcrPlateProvider(PlateProvider):
                 roi_fraction=roi_fraction,
             )
             pass_stats.append(fallback_stats)
+            detections = [*detections, *fallback_dets]
 
         if not detections:
             self._maybe_log_miss_diagnostics(image_path, pass_stats)

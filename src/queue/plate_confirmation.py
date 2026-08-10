@@ -14,11 +14,18 @@ class FramePlateBuffer:
     the scene — prevents re-firing on long clips where the same car stays visible.
     """
 
-    def __init__(self, window_size: int = 3, min_hits: int = 2) -> None:
+    def __init__(
+        self,
+        window_size: int = 3,
+        min_hits: int = 2,
+        empty_clear_after: int = 2,
+    ) -> None:
         self._window_size = window_size
         self._min_hits = min_hits
+        self._empty_clear_after = max(1, empty_clear_after)
         self._recent: list[tuple[str, float]] = []
         self._handled_plate: str | None = None
+        self._empty_streak = 0
 
     def observe(self, plate: str, confidence: float) -> tuple[str, float] | None:
         """
@@ -28,6 +35,7 @@ class FramePlateBuffer:
         if self._handled_plate == normalized:
             return None
 
+        self._empty_streak = 0
         self._recent.append((normalized, confidence))
         if len(self._recent) > self._window_size:
             self._recent.pop(0)
@@ -50,12 +58,23 @@ class FramePlateBuffer:
         """Stop re-confirming this plate until the scene is empty."""
         self._handled_plate = normalize_plate(plate)
         self._recent.clear()
+        self._empty_streak = 0
 
     def observe_empty(self) -> None:
-        """Scene has no plate — allow the next vehicle to be confirmed."""
+        """
+        Scene has no plate.
+
+        Require a short empty streak before clearing — a single OCR miss between
+        two good reads (common at ~1 fps) must not wipe confirmation progress.
+        """
+        self._empty_streak += 1
+        if self._empty_streak < self._empty_clear_after:
+            return
         self._handled_plate = None
         self._recent.clear()
+        self._empty_streak = 0
 
     def clear(self) -> None:
         self._handled_plate = None
         self._recent.clear()
+        self._empty_streak = 0

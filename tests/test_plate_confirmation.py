@@ -9,6 +9,7 @@ def test_does_not_reconfirm_previous_plate_when_new_plate_appears():
     buf.mark_handled("IPP443")
 
     buf.observe_empty()
+    buf.observe_empty()
 
     assert buf.observe("JJS743", 0.85) is None
     assert buf.observe("JJS743", 0.87) == ("JJS743", 0.86)
@@ -29,6 +30,7 @@ def test_long_scene_does_not_reconfirm_same_plate():
     assert buf.observe("BXB997", 0.77) is None
 
     buf.observe_empty()
+    buf.observe_empty()
     assert buf.observe("BXB997", 0.7) is None
     assert buf.observe("BXB997", 0.72) == ("BXB997", 0.71)
 
@@ -38,4 +40,17 @@ def test_empty_frame_clears_stale_reads():
 
     buf.observe("IPP443", 0.8)
     buf.observe_empty()
+    # Single miss must not wipe the first read.
+    assert buf.observe("IPP443", 0.82) == ("IPP443", 0.81)
+    buf.mark_handled("IPP443")
+
+    buf.observe_empty()
+    buf.observe_empty()
     assert buf.observe("JJS743", 0.9) is None
+
+
+def test_single_empty_between_hits_still_confirms():
+    buf = FramePlateBuffer(window_size=5, min_hits=2)
+    assert buf.observe("YGE40Z", 0.66) is None
+    buf.observe_empty()
+    assert buf.observe("YGE40Z", 0.67) == ("YGE40Z", 0.665)
