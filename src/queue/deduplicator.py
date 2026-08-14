@@ -23,6 +23,7 @@ class PlateDeduplicator:
         self._cooldown_seconds = settings.plate_cooldown_seconds
         self._last_seen: dict[str, datetime] = {}
         self._suffix_best: dict[str, tuple[str, float]] = {}
+        self._plate_confidence: dict[str, float] = {}
 
     @property
     def cooldown_seconds(self) -> int:
@@ -53,6 +54,26 @@ class PlateDeduplicator:
                     )
                     return False
 
+        # Near OCR variants of a recently accepted plate (covers ABC12A / 0↔D).
+        for seen_plate, seen_at in self._last_seen.items():
+            if seen_plate == normalized:
+                continue
+            if (now - seen_at).total_seconds() > self._cooldown_seconds:
+                continue
+            prev_conf = self._plate_confidence.get(seen_plate, 1.0)
+            if is_likely_suffix_misread(normalized, seen_plate, prev_conf, confidence):
+                logger.info(
+                    "misread rejected",
+                    extra={
+                        "event": "misread_rejected",
+                        "plate": normalized,
+                        "confidence": confidence,
+                        "reference_plate": seen_plate,
+                        "reference_confidence": prev_conf,
+                    },
+                )
+                return False
+
         last = self._last_seen.get(normalized)
         if last is not None:
             elapsed = (now - last).total_seconds()
@@ -75,6 +96,7 @@ class PlateDeduplicator:
         normalized = normalize_plate(plate)
         now = datetime.now(timezone.utc)
         self._last_seen[normalized] = now
+        self._plate_confidence[normalized] = confidence
         suffix = plate_suffix(normalized)
         if suffix is not None:
             prev = self._suffix_best.get(suffix)
@@ -84,6 +106,7 @@ class PlateDeduplicator:
     def reset(self) -> None:
         self._last_seen.clear()
         self._suffix_best.clear()
+        self._plate_confidence.clear()
 
     @property
     def last_detection(self) -> dict | None:

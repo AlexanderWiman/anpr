@@ -44,20 +44,16 @@ def is_likely_suffix_misread(
     candidate_confidence: float,
 ) -> bool:
     """
-    Detect OCR misreads that share digits but differ in letters (POE797 vs PUE797).
+    Detect OCR misreads of a recently confirmed plate.
 
-    Rejects when the candidate has the same numeric suffix, a similar (<=2) letter
-    prefix, and was not read with clearly higher confidence than the reference.
+    Covers classic digit-suffix cases (POE797 vs PUE797) and confusable
+    new-format variants (GRC470 vs GRC47D).
     """
     cand = normalize_plate(candidate)
     ref = normalize_plate(reference_plate)
-    cand_suffix = plate_suffix(cand)
-    ref_suffix = plate_suffix(ref)
-    if not cand_suffix or cand_suffix != ref_suffix:
-        return False
     if cand == ref:
         return False
-    if prefix_letter_distance(cand, ref) > 2:
+    if not _is_near_plate_match(cand, ref):
         return False
     # Require reference to be a clearly better read before treating this as noise.
     return candidate_confidence <= reference_confidence + 0.08
@@ -108,17 +104,68 @@ def is_plausible_ocr_plate(
     return True
 
 
+# Common OCR lookalikes on Swedish plates (letters and digits).
+_OCR_CONFUSIONS: dict[str, frozenset[str]] = {
+    "0": frozenset({"0", "O", "D", "Q"}),
+    "O": frozenset({"O", "0", "D", "Q", "G", "C"}),
+    "D": frozenset({"D", "0", "O", "Q"}),
+    "Q": frozenset({"Q", "0", "O", "D"}),
+    "1": frozenset({"1", "I", "L", "T"}),
+    "I": frozenset({"I", "1", "L", "T"}),
+    "L": frozenset({"L", "1", "I"}),
+    "T": frozenset({"T", "1", "I"}),
+    "5": frozenset({"5", "S"}),
+    "S": frozenset({"S", "5"}),
+    "8": frozenset({"8", "B"}),
+    "B": frozenset({"B", "8"}),
+    "2": frozenset({"2", "Z"}),
+    "Z": frozenset({"Z", "2"}),
+    "6": frozenset({"6", "G"}),
+    "G": frozenset({"G", "6", "C", "O"}),
+    "C": frozenset({"C", "G", "O"}),
+    "U": frozenset({"U", "V"}),
+    "V": frozenset({"V", "U"}),
+}
+
+
+def _chars_ocr_compatible(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    group = _OCR_CONFUSIONS.get(a)
+    return bool(group and b in group)
+
+
 def _is_near_plate_match(candidate: str, expected: str) -> bool:
-    """True when plates share digit suffix and differ by at most 2 prefix letters."""
+    """
+    True when plates are the same or a likely OCR near-miss of each other.
+
+    Supports:
+    - Classic ABC123 letter misreads with shared digit suffix (POE797 ↔ PUE797)
+    - New ABC12A / mixed forms with confusable chars (GRC470 ↔ GRC47D ↔ ORC47D)
+    """
     cand = normalize_plate(candidate)
     exp = normalize_plate(expected)
     if cand == exp:
         return True
+    if not is_valid_swedish_plate(cand) or not is_valid_swedish_plate(exp):
+        return False
+    if len(cand) != len(exp):
+        return False
+
+    # Legacy path: same numeric suffix + close letter prefix.
     cand_suffix = plate_suffix(cand)
     exp_suffix = plate_suffix(exp)
-    if not cand_suffix or cand_suffix != exp_suffix:
+    if cand_suffix and cand_suffix == exp_suffix:
+        return prefix_letter_distance(cand, exp) <= 2
+
+    # General path: at most two positions differ, and each swap is OCR-confusable.
+    diffs = [(a, b) for a, b in zip(cand, exp, strict=True) if a != b]
+    if not diffs or len(diffs) > 2:
         return False
-    return prefix_letter_distance(cand, exp) <= 2
+    return all(_chars_ocr_compatible(a, b) for a, b in diffs)
+
+def is_near_plate_match(candidate: str, expected: str) -> bool:
+    return _is_near_plate_match(candidate, expected)
 
 
 def resolve_with_booking_hints(
